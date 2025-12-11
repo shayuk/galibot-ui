@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>לוח ניהול העלאות PDF</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #f8fafc;
+      padding: 20px;
+      direction: rtl;
+    }
+    h1 {
+      color: #2563eb;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px 12px;
+      text-align: center;
+    }
+    th {
+      background: #e0e7ff;
+    }
+    .error {
+      color: red;
+    }
+    .loading {
+      color: #999;
+    }
+  </style>
+</head>
+<body>
+  <h1>📊 לוח ניהול - קבצים שהועלו</h1>
+  <div id="status" class="loading">טוען נתונים...</div>
+  <table id="results" style="display:none">
+    <thead>
+      <tr>
+        <th>📄 מקור</th>
+        <th>📚 קורס</th>
+        <th>🔢 כמות קטעים</th>
+        <th>⏱ זמן עיבוד (שניות)</th>
+        <th>📅 תאריך</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "YOUR_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      projectId: "lecturers-gpt-auth"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    const emailFilter = "shayuk@ariel.ac.il"; // רק קבצים שהועלו על ידך
+
+    async function loadData() {
+      const status = document.getElementById('status');
+      const table = document.getElementById('results');
+      const tbody = table.querySelector('tbody');
+      tbody.innerHTML = '';
+
+      try {
+        const snapshot = await db.collection('course_chunks')
+          .where("email", "==", emailFilter)
+          .orderBy("ts", "desc")
+          .limit(100).get();
+
+        const grouped = {};
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          const key = data.course_name + "__" + data.source;
+          if (!grouped[key]) {
+            grouped[key] = {
+              course_name: data.course_name,
+              source: data.source,
+              count: 0,
+              ts: data.ts?.toDate(),
+              total_ms: 0
+            };
+          }
+          grouped[key].count++;
+        });
+
+        Object.values(grouped).forEach(row => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${row.source}</td>
+            <td>${row.course_name}</td>
+            <td>${row.count}</td>
+            <td>~${Math.round(row.count * 0.8)}</td>
+            <td>${row.ts?.toLocaleString() || '—'}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        table.style.display = 'table';
+        status.style.display = 'none';
+      } catch (err) {
+        status.textContent = "שגיאה בטעינת הנתונים.";
+        console.error(err);
+      }
+    }
+
+    loadData();
+    setInterval(loadData, 5000);
+  </script>
+</body>
+</html>

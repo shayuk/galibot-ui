@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <title>GaliBot – צ'אט לסטודנטים</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+      background: #f3f4f6;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+    }
+    .container {
+      max-width: 800px;
+      width: 100%;
+      margin: 20px;
+      background: #ffffff;
+      border-radius: 16px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .header {
+      padding: 16px 20px;
+      background: linear-gradient(90deg, #2563eb, #10b981);
+      color: white;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    .chat {
+      padding: 16px 20px;
+      height: 450px;
+      overflow-y: auto;
+      background: #f9fafb;
+    }
+    .message {
+      margin-bottom: 12px;
+      max-width: 90%;
+      padding: 8px 12px;
+      border-radius: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+    .message.user {
+      background: #2563eb;
+      color: white;
+      margin-left: auto;
+      border-bottom-right-radius: 0;
+    }
+    .message.bot {
+      background: #e5e7eb;
+      color: #111827;
+      margin-right: auto;
+      border-bottom-left-radius: 0;
+    }
+    .footer {
+      border-top: 1px solid #e5e7eb;
+      padding: 10px 12px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    textarea {
+      flex: 1;
+      resize: none;
+      border-radius: 10px;
+      border: 1px solid #d1d5db;
+      padding: 8px 10px;
+      font-family: inherit;
+      font-size: 0.95rem;
+      min-height: 40px;
+      max-height: 90px;
+    }
+    button {
+      border: none;
+      border-radius: 999px;
+      padding: 10px 16px;
+      background: #2563eb;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s ease;
+      white-space: nowrap;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+    .status {
+      font-size: 0.8rem;
+      color: #6b7280;
+      padding: 0 16px 8px;
+    }
+    .status.loading {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status.loading::after {
+      content: '';
+      width: 12px;
+      height: 12px;
+      border: 2px solid #6b7280;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+  <!-- MathJax לתמיכה בנוסחאות LaTeX -->
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['\\(', '\\)']],
+        displayMath: [['$$', '$$']],
+        processEscapes: true,
+        processEnvironments: true,
+        autoload: {
+          color: [],
+          colorv2: ['color'],
+          bbox: ['bbox'],
+          cancel: ['cancel', 'bcancel', 'xcancel'],
+          enclose: ['enclose']
+        }
+      },
+      options: {
+        skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre'],
+        ignoreHtmlClass: 'tex2jax_ignore',
+        processHtmlClass: 'tex2jax_process'
+      },
+      startup: {
+        ready: () => {
+          console.log('MathJax is loaded and ready');
+          MathJax.startup.defaultReady();
+        }
+      }
+    };
+  </script>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      GaliBot – עוזר הסטטיסטיקה לסטודנטים
+    </div>
+
+    <div id="chat" class="chat">
+      <div class="message bot">
+        היי 👋 אני גלי־בוט. אפשר לשאול אותי שאלות על סטטיסטיקה, SPSS ותרגול לקורס.
+      </div>
+    </div>
+
+    <div class="status" id="status"></div>
+
+    <div class="footer">
+      <textarea id="input" placeholder="כתבו כאן שאלה לגלי־בוט..."></textarea>
+      <button id="sendBtn">שליחה</button>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = "https://lecturers-gpt-server.onrender.com/api/ask/stream";
+    // שימו לב: API_URL כבר מכיל את ה-streaming endpoint
+
+    const chatEl = document.getElementById("chat");
+    const inputEl = document.getElementById("input");
+    const sendBtn = document.getElementById("sendBtn");
+    const statusEl = document.getElementById("status");
+
+    // 👇 Use a fixed test email for now. Replace with actual user email when available.
+    const USER_EMAIL = "test@ariel.ac.il";
+
+    // פונקציה לזיהוי ועיטוף נוסחאות LaTeX
+    function processLatex(text) {
+      if (!text) return text;
+      
+      let processed = text;
+      
+      // שלב 1: זיהוי נוסחאות שכבר עטופות - נשאיר אותן כמו שהן
+      // אבל נבדוק אם יש נוסחאות לא עטופות
+      
+      // שלב 2: זיהוי נוסחאות מורכבות בשורה נפרדת (block formulas)
+      // דפוס: שורה שמכילה נוסחה LaTeX מורכבת (כמו \frac, \sqrt, וכו')
+      processed = processed.replace(/(?:^|\n\n)([^\n]*(?:\\frac|\\sqrt|\\sum|\\int|\\lim|\\prod)\{[^}]+\}[^\n]*)(?:\n\n|$)/gm, (match, formula) => {
+        // אם זה לא כבר עטוף ב-$$ או \[
+        if (!match.includes('$$') && !match.includes('\\[') && !match.includes('\\(')) {
+          return '\n\n$$' + formula.trim() + '$$\n\n';
+        }
+        return match;
+      });
+      
+      // שלב 3: זיהוי נוסחאות עם \text{...} = \frac{...}{...} - נוסחאות מורכבות עם טקסט
+      // דפוס: \text{ממוצע} = \frac{...}{...} או \text{ממוצע}=\frac{...}{...}
+      // זה צריך להיות לפני זיהוי \frac פשוט כי זה יותר ספציפי
+      processed = processed.replace(/([^$\(]|^)(\\text\{[^}]+\}\s*=\s*\\frac\{[^}]+\}\{[^}]+\})/g, (match, before, formula) => {
+        if (!before.includes('\\(') && !before.includes('$$') && !before.includes('\\[')) {
+          return before + '\\(' + formula + '\\)';
+        }
+        return match;
+      });
+      
+      // שלב 3.5: זיהוי נוסחאות עם \text{...} = נוסחה (כל סוג נוסחה)
+      // דפוס: \text{ממוצע} = \frac{...}{...} או \text{ממוצע} = נוסחה אחרת
+      processed = processed.replace(/([^$\(]|^)(\\text\{[^}]+\}\s*=\s*[^\n]+)/g, (match, before, formula) => {
+        // בדיקה אם יש נוסחה LaTeX בנוסחה
+        if (!before.includes('\\(') && !before.includes('$$') && !before.includes('\\[') && 
+            (formula.includes('\\frac') || formula.includes('\\sqrt') || (formula.includes('\\') && formula.match(/\\[a-zA-Z]+/)))) {
+          return before + '\\(' + formula.trim() + '\\)';
+        }
+        return match;
+      });
+      
+      // שלב 4: זיהוי נוסחאות \frac inline (בתוך טקסט) - הכי נפוץ
+      // דפוס: \frac{...}{...} שלא עטוף
+      processed = processed.replace(/([^$\(\\]|^)(\\frac\{[^}]+\}\{[^}]+\})(?![^$]*\$)/g, (match, before, formula) => {
+        // בדיקה אם זה לא כבר עטוף
+        if (!before.includes('\\(') && !before.includes('$$') && !before.includes('\\[')) {
+          return before + '\\(' + formula + '\\)';
+        }
+        return match;
+      });
+      
+      // שלב 5: זיהוי נוסחאות \sqrt inline
+      processed = processed.replace(/([^$\(\\]|^)(\\sqrt\{[^}]+\})(?![^$]*\$)/g, (match, before, formula) => {
+        if (!before.includes('\\(') && !before.includes('$$') && !before.includes('\\[')) {
+          return before + '\\(' + formula + '\\)';
+        }
+        return match;
+      });
+      
+      // שלב 6: זיהוי משתנים יווניים וסימנים מתמטיים נפוצים inline
+      // רשימה של סימנים נפוצים בסטטיסטיקה
+      const greekAndMath = [
+        'alpha', 'beta', 'gamma', 'delta', 'epsilon', 'theta', 'lambda', 
+        'mu', 'nu', 'pi', 'rho', 'sigma', 'tau', 'phi', 'chi', 'psi', 'omega',
+        'sum', 'int', 'prod', 'lim', 'inf', 'infty', 'sqrt', 'partial'
+      ];
+      
+      for (const symbol of greekAndMath) {
+        // דפוס: \symbol או \symbol{...} שלא עטוף
+        const pattern = new RegExp(`([^$\(\\\\]|^)(\\\\${symbol}(?:\\{[^}]+\\})*)(?![^$]*\\$)`, 'g');
+        processed = processed.replace(pattern, (match, before, formula) => {
+          // בדיקה אם זה לא כבר עטוף או חלק מנוסחה מורכבת יותר
+          if (!before.includes('\\(') && !before.includes('$$') && !before.includes('\\[')) {
+            // בדיקה אם זה לא חלק מ-\frac או \sqrt שכבר טופלו
+            if (!before.includes('\\frac') && !before.includes('\\sqrt') && !before.includes('\\text')) {
+              return before + '\\(' + formula + '\\)';
+            }
+          }
+          return match;
+        });
+      }
+      
+      return processed;
+    }
+
+    function addMessage(role, text) {
+      const msg = document.createElement("div");
+      msg.className = "message " + role;
+      
+      // עיבוד LaTeX אם צריך
+      const processedText = processLatex(text);
+      msg.innerHTML = processedText.replace(/\n/g, '<br>');
+      
+      chatEl.appendChild(msg);
+      chatEl.scrollTop = chatEl.scrollHeight;
+      
+      // הפעלת MathJax על האלמנט החדש
+      if (window.MathJax && window.MathJax.typesetPromise) {
+        window.MathJax.typesetPromise([msg]).catch((err) => {
+          console.error('MathJax error:', err);
+        });
+      }
+    }
+
+    async function sendMessage() {
+      const text = inputEl.value.trim();
+      if (!text) return;
+
+      // Add the user's message to the chat
+      addMessage("user", text);
+      inputEl.value = "";
+      inputEl.focus();
+      sendBtn.disabled = true;
+      statusEl.textContent = "גלי־בוט מחפשת במאגר החומרים...";
+      statusEl.classList.add('loading');
+
+      try {
+        // קריאה ל-streaming endpoint
+        const response = await fetch(API_URL, {
+          method: "POST",
+          mode: "cors",
+          headers: { 
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            email: USER_EMAIL,
+            prompt: text
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        // עדכון סטטוס - התחלנו לקבל תשובה
+        statusEl.textContent = "גלי־בוט כותבת...";
+        statusEl.classList.add('loading');
+
+        // קריאת ה-stream token-by-token
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let fullAnswer = '';
+        let firstTokenReceived = false;
+        
+        // יצירת הודעת בוט ריקה שתתעדכן בזמן אמת
+        const botMsgEl = document.createElement("div");
+        botMsgEl.className = "message bot";
+        botMsgEl.textContent = "";
+        chatEl.appendChild(botMsgEl);
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // שמירת השורה האחרונה שלא הושלמה
+
+          for (const line of lines) {
+            if (line.trim() === '') continue;
+            
+            // טיפול ב-SSE format
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                
+                if (data.type === 'token') {
+                  if (!firstTokenReceived) {
+                    firstTokenReceived = true;
+                    statusEl.textContent = ""; // הסרת ההודעה כשהתשובה מתחילה
+                  }
+                  
+                  fullAnswer += data.content;
+                  // עיבוד LaTeX ועדכון ה-UI עם התשובה החלקית
+                  const processedText = processLatex(fullAnswer);
+                  botMsgEl.innerHTML = processedText.replace(/\n/g, '<br>');
+                  chatEl.scrollTop = chatEl.scrollHeight;
+                  
+                  // הפעלת MathJax על האלמנט (כל 15 תווים כדי לעדכן נוסחאות בזמן אמת)
+                  if (window.MathJax && window.MathJax.typesetPromise && fullAnswer.length % 15 === 0) {
+                    window.MathJax.typesetPromise([botMsgEl]).catch((err) => {
+                      console.error('MathJax error:', err);
+                    });
+                  }
+                } else if (data.type === 'done') {
+                  // הפעלת MathJax סופית כשהתשובה הושלמה - חשוב מאוד!
+                  if (window.MathJax && window.MathJax.typesetPromise) {
+                    window.MathJax.typesetPromise([botMsgEl]).then(() => {
+                      console.log('MathJax rendering completed');
+                    }).catch((err) => {
+                      console.error('MathJax error:', err);
+                    });
+                  } else if (window.MathJax && window.MathJax.typeset) {
+                    // Fallback ל-MathJax 2.x אם צריך
+                    window.MathJax.typeset([botMsgEl]);
+                  }
+                  // סיום - אין צורך לעשות כלום
+                  break;
+                } else if (data.type === 'error') {
+                  throw new Error(data.message);
+                }
+              } catch (e) {
+                console.error('Parse error:', e, 'Line:', line);
+              }
+            } else if (line.startsWith(': ')) {
+              // Comment line - ignore
+              continue;
+            }
+          }
+        }
+
+      } catch (err) {
+        console.error("Fetch error:", err);
+        addMessage("bot", "שגיאה בתקשורת עם השרת: " + err.message);
+      } finally {
+        sendBtn.disabled = false;
+        statusEl.textContent = "";
+        statusEl.classList.remove('loading');
+      }
+    }
+
+    sendBtn.addEventListener("click", sendMessage);
+    inputEl.addEventListener("keydown", e => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+  </script>
+</body>
+</html>
+
