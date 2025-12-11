@@ -199,7 +199,7 @@
       // שלב 2.5: זיהוי נוסחאות מורכבות בשורה נפרדת (block formulas)
       // דפוס: שורה שמכילה נוסחה LaTeX מורכבת (כמו \sqrt{...}, \frac{...}{...}, \sum, וכו')
       // נחפש נוסחאות שמתחילות עם = או : ואחריהן נוסחה
-      processed = processed.replace(/(?:^|\n\n)([^\n]*=\s*\\sqrt\{[^}]+\}[^\n]*)(?:\n\n|$)/gm, (match, formula) => {
+      processed = processed.replace(/(?:^|\n\n)([^\n]*=\s*\\sqrt\{[^}]*\}[^\n]*)(?:\n\n|$)/gm, (match, formula) => {
         if (!match.includes('$$') && !match.includes('\\[') && !match.includes('\\(')) {
           return '\n\n$$' + formula.trim() + '$$\n\n';
         }
