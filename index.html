@@ -197,12 +197,15 @@
       
       // תיקון נוסחאות שמסתיימות עם $ בודד אחרי $$
       // דפוס: $$ נוסחה $ -> $$ נוסחה $$
-      processed = processed.replace(/\$\$([^$]+)\$\s*$/gm, '$$$1$$');
-      processed = processed.replace(/\$\$([^$]+)\$\s*\n/g, '$$$1$$\n');
+      // זה מטפל במקרים כמו: $$ נוסחה $ \n\n $
+      processed = processed.replace(/\$\$([^$]+)\$\s*\n\s*\n\s*\$/g, '$$$1$$');  // $$ נוסחה $ \n\n $ -> $$ נוסחה $$
+      processed = processed.replace(/\$\$([^$]+)\$\s*\n\s*\$/g, '$$$1$$');      // $$ נוסחה $ \n $ -> $$ נוסחה $$
+      processed = processed.replace(/\$\$([^$]+)\$\s*$/gm, '$$$1$$');           // $$ נוסחה $ -> $$ נוסחה $$
+      processed = processed.replace(/\$\$([^$]+)\$\s*\n/g, '$$$1$$\n');        // $$ נוסחה $ \n -> $$ נוסחה $$ \n
       
       // תיקון שורות שמכילות רק $ או $ עם רווחים
       processed = processed.replace(/^\s*\$\s*$/gm, '');        // שורות שמכילות רק $
-      processed = processed.replace(/\n\$\s*\n/g, '\n');        // $ בודד בין שורות
+      processed = processed.replace(/\n\$\s*\n/g, '\n');         // $ בודד בין שורות
       processed = processed.replace(/\n\$/g, '\n');            // שורות שמסתיימות ב-$ (הסרת ה-$)
       processed = processed.replace(/\$\s*$/gm, '');           // $ בודד בסוף שורה
       
