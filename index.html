@@ -111,6 +111,23 @@
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
+    /* Legal/Credit Banner - Must not be removed without approval */
+    .legal-banner {
+      border-top: 1px solid #e5e7eb;
+      padding: 10px 20px;
+      background: #f9fafb;
+      text-align: center;
+      font-size: 0.75rem;
+      color: #6b7280;
+      line-height: 1.5;
+      direction: rtl;
+    }
+    @media (max-width: 600px) {
+      .legal-banner {
+        font-size: 0.7rem;
+        padding: 8px 16px;
+      }
+    }
   </style>
   <!-- MathJax לתמיכה בנוסחאות LaTeX -->
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
@@ -169,6 +186,12 @@
     <div class="footer">
       <textarea id="input" placeholder="כתבו כאן שאלה לגלי־בוט..."></textarea>
       <button id="sendBtn">שליחה</button>
+    </div>
+    
+    <!-- Legal/Credit Banner - Must not be removed without approval -->
+    <!-- כל חומרי ההוראה, הדוגמאות והתכנים בבוט זה נכתבו ואושרו על-ידי ד״ר גלית מדר. © כל הזכויות שמורות. -->
+    <div class="legal-banner" dir="rtl" lang="he">
+      כל חומרי ההוראה, הדוגמאות והתכנים בבוט זה נכתבו ואושרו על-ידי ד״ר גלית מדר. © כל הזכויות שמורות.
     </div>
   </div>
 
