@@ -200,12 +200,18 @@
       processed = processed.replace(/\$\$\$([^$]+)\$\$/g, '$$$1$$');
       processed = processed.replace(/\$\$([^$]+)\$\$\$/g, '$$$1$$');
       
+      // תיקון נוסחאות שמתחילות עם $$$\$ ואחריהן נוסחה מורכבת עם $$ באמצע
+      // דפוס: $$$\$sigma = \sqrt{\frac{1}{N}$$ \sum_{i=1}^{N} (x_i - \mu)^2}$$
+      // צריך להפוך ל: $$ \sigma = \sqrt{ \frac{1}{N} \sum_{i=1}^{N} (x_i - \mu)^2 } $$
+      processed = processed.replace(/\$\$\$\\\$([a-zA-Z]+)\s*=\s*([^$]+)\$\$\s*([^$]+)\$\$/g, (match, varName, part1, part2) => {
+        // נוודא שיש רווחים נכונים ונוסחה נקייה
+        const cleanPart1 = part1.trim();
+        const cleanPart2 = part2.trim();
+        return '$$ \\' + varName + ' = ' + cleanPart1 + ' ' + cleanPart2 + ' $$';
+      });
+      
       // תיקון נוסחאות שמתחילות עם $$$\$ ואחריהן נוסחה (כמו $$$\$sigma = ...$$ -> $$ \sigma = ... $$)
       processed = processed.replace(/\$\$\$\\\$([a-zA-Z]+)\s*=\s*([^$]+)\$\$/g, '$$ \\$1 = $2 $$');
-      
-      // תיקון נוסחאות שמתחילות עם $$$\$ ואחריהן נוסחה מורכבת עם $$ באמצע
-      // דפוס: $$$\$sigma = \sqrt{...}$$ \sum...$$ -> $$ \sigma = \sqrt{...} \sum... $$
-      processed = processed.replace(/\$\$\$\\\$([a-zA-Z]+)\s*=\s*([^$]+)\$\$\s*([^$]+)\$\$/g, '$$ \\$1 = $2 $3 $$');
       
       // תיקון נוסחאות עם $$ באמצע הנוסחה (הסרת $$ פנימיים)
       // דפוס: $$...$$ נוסחה $$...$$ -> $$...נוסחה...$$
