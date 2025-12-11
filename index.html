@@ -251,22 +251,41 @@
       // תיקון נוסחאות עם $$ באמצע שמכילות LaTeX commands (כמו \sqrt, \sum)
       // דפוס: $$...\sqrt{...}$$ \sum...$$ -> $$ ...\sqrt{...} \sum... $$
       // זה מטפל בנוסחאות שמגיעות עם $$ באמצע (כמו $$...$$ נוסחה $$...$$)
-      processed = processed.replace(/\$\$([^$]*\\sqrt\{[^}]+\}[^$]*)\$\$\s*([^$]*\\sum[^$]*)\$\$/g, '$$ $1 $2 $$');
-      processed = processed.replace(/\$\$([^$]*\\frac[^$]*)\$\$\s*([^$]*\\sum[^$]*)\$\$/g, '$$ $1 $2 $$');
+      processed = processed.replace(/\$\$([^$]*\\sqrt\{[^}]+\}[^$]*)\$\$\s*([^$]*\\sum[^$]*)\$\$/g, (match, part1, part2) => {
+        // ניקוי רווחים מיותרים ונוודא שיש רווח אחד בין החלקים
+        const cleanPart1 = part1.trim().replace(/\s+/g, ' ');
+        const cleanPart2 = part2.trim().replace(/\s+/g, ' ');
+        return '$$ ' + cleanPart1 + ' ' + cleanPart2 + ' $$';
+      });
+      processed = processed.replace(/\$\$([^$]*\\frac[^$]*)\$\$\s*([^$]*\\sum[^$]*)\$\$/g, (match, part1, part2) => {
+        const cleanPart1 = part1.trim().replace(/\s+/g, ' ');
+        const cleanPart2 = part2.trim().replace(/\s+/g, ' ');
+        return '$$ ' + cleanPart1 + ' ' + cleanPart2 + ' $$';
+      });
       
       // תיקון נוסחאות שמתחילות עם \sigma או משתנה אחר ואחריהן = ואחריהן נוסחה עם $$ באמצע
       // דפוס: \sigma = \sqrt{...}$$ \sum...$$ -> $$ \sigma = \sqrt{...} \sum... $$
-      processed = processed.replace(/(\\[a-zA-Z]+\s*=\s*[^$]*\\sqrt\{[^}]+\}[^$]*)\$\$\s*([^$]*\\sum[^$]*)\$\$/g, '$$ $1 $2 $$');
-      processed = processed.replace(/(\\[a-zA-Z]+\s*=\s*[^$]*\\frac[^$]*)\$\$\s*([^$]*\\sum[^$]*)\$\$/g, '$$ $1 $2 $$');
+      processed = processed.replace(/(\\[a-zA-Z]+\s*=\s*[^$]*\\sqrt\{[^}]+\}[^$]*)\$\$\s*([^$]*\\sum[^$]*)\$\$/g, (match, part1, part2) => {
+        const cleanPart1 = part1.trim().replace(/\s+/g, ' ');
+        const cleanPart2 = part2.trim().replace(/\s+/g, ' ');
+        return '$$ ' + cleanPart1 + ' ' + cleanPart2 + ' $$';
+      });
+      processed = processed.replace(/(\\[a-zA-Z]+\s*=\s*[^$]*\\frac[^$]*)\$\$\s*([^$]*\\sum[^$]*)\$\$/g, (match, part1, part2) => {
+        const cleanPart1 = part1.trim().replace(/\s+/g, ' ');
+        const cleanPart2 = part2.trim().replace(/\s+/g, ' ');
+        return '$$ ' + cleanPart1 + ' ' + cleanPart2 + ' $$';
+      });
       
-      // תיקון נוסחאות שמתחילות עם משתנה ואחריהן = ואחריהן נוסחה עם $$ באמצע
+      // תיקון נוסחאות שמתחילות עם משתנה (ללא \) ואחריהן = ואחריהן נוסחה עם $$ באמצע
       // דפוס: sigma = \sqrt{...}$$ \sum...$$ -> $$ \sigma = \sqrt{...} \sum... $$
       processed = processed.replace(/([a-zA-Z]+\s*=\s*[^$]*\\sqrt\{[^}]+\}[^$]*)\$\$\s*([^$]*\\sum[^$]*)\$\$/g, (match, part1, part2) => {
         // אם part1 מתחיל עם משתנה (לא \), נמיר אותו ל-\sigma אם זה sigma
-        if (part1.startsWith('sigma')) {
-          part1 = '\\sigma' + part1.substring(5);
+        let cleanPart1 = part1.trim().replace(/\s+/g, ' ');
+        if (cleanPart1.startsWith('sigma')) {
+          cleanPart1 = '\\sigma' + cleanPart1.substring(5);
         }
-        return '$$ ' + part1 + ' ' + part2 + ' $$';
+        const cleanPart2 = part2.trim().replace(/\s+/g, ' ');
+        return '$$ ' + cleanPart1 + ' ' + cleanPart2 + ' $$';
       });
       
       // תיקון נוסחאות שמתחילות עם $$$...$$ ואחריהן נוסחה נוספת
