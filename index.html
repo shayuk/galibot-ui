@@ -204,66 +204,72 @@
     // 👇 Use a fixed test email for now. Replace with actual user email when available.
     const USER_EMAIL = "test@ariel.ac.il";
 
-    // פונקציה לזיהוי ועיטוף נוסחאות LaTeX (מתוקנת)
+    // פונקציה לזיהוי ועיטוף נוסחאות LaTeX (הגרסה המתוקנת והמוגנת)
     function processLatex(text) {
       if (!text) return text;
       
       let processed = text;
       
-      // שלב 1: ניקוי אגרסיבי של תווים שגויים שהבוט מחזיר
-      // מנקה סימני דולר כפולים ומשולשים בתחילת נוסחאות ובסופן
+      // 1. ניקוי אגרסיבי של "זבל" שהבוט מחזיר
       processed = processed.replace(/\$\$\$\\\$/g, '$$');
       processed = processed.replace(/\$\$\$/g, '$$');
-      processed = processed.replace(/\n\$/g, '');
-      processed = processed.replace(/\$\s*$/g, '');
-      
-      // ניקוי נוסף למקרים של סלאש לפני דולר כפול
       processed = processed.replace(/\\\$\$/g, '$$');
+      // ניקוי דולרים בודדים בסוף טקסט או שורות
+      processed = processed.replace(/\n\$\s*$/g, '');
+      processed = processed.replace(/\$\s*$/g, '');
+
+      // 2. נרמול: המרת \[...\] ל-$$...$$ כדי ליצור אחידות
+      processed = processed.replace(/\\\[/g, '$$').replace(/\\\]/g, '$$');
+
+      // 3. הגנה (Protection): זיהוי נוסחאות שכבר עטופות ב-$$ או \( והסתרתן
+      // זה מונע את הבאג שבו עוטפים \mu בתוך \frac שכבר עטוף
+      const placeholders = [];
+      const protect = (match) => {
+        placeholders.push(match);
+        return `%%%MATH${placeholders.length - 1}%%%`;
+      };
+
+      // זיהוי נוסחאות block ($$..$$) ו-inline (\(..\))
+      processed = processed.replace(/\$\$([\s\S]*?)\$\$/g, protect);
+      processed = processed.replace(/\\\(([\s\S]*?)\\\)/g, protect);
+
+      // 4. כעת ה-processed מכיל רק טקסט וטוקנים. אפשר לעבוד בבטחה על "נוסחאות עירומות".
       
-      // שלב 2: זיהוי ועיטוף נוסחאות שלא עטופות (Bare LaTeX)
-      
-      // א. נוסחאות מורכבות בשורה נפרדת (Block Math)
-      // מזהה שורות שמתחילות בנוסחה LaTeX "כבדה" (כמו שברים, שורשים)
-      // דוגמה: sigma = \sqrt{...}
-      processed = processed.replace(/(?:^|\n\n)([a-zA-Z0-9_]+\s*=\s*)?(\\[a-zA-Z]+.*?)(\n\n|$)/g, function(match, variable, formula) {
-          // אם כבר עטוף ב-$$ או \[ - דלג
-          if (match.includes('$$') || match.includes('\\[')) return match;
-          
-          // אם הנוסחה מכילה פקודות מורכבות, נעטוף אותה ב-$$
-          if (formula.includes('\\frac') || formula.includes('\\sqrt') || formula.includes('\\sum') || formula.includes('\\int')) {
-              // מחזירים את המחרוזת עטופה ב-$$ ומנקים רווחים
-              return '\n\n$$ ' + (variable || '') + formula.trim() + ' $$\n\n';
-          }
-          return match;
+      // א. זיהוי משוואות מורכבות עירומות (מכילות =, \, וסימנים כמו frac/sum)
+      processed = processed.replace(/(?:^|\n)([^%\n]+=[^%\n]*\\[a-zA-Z]+[^%\n]*)(?:\n|$)/g, (match, formula) => {
+          return '\n$$ ' + formula.trim() + ' $$\n';
       });
 
-      // ב. נוסחאות בתוך שורה (Inline Math)
-      // עובר על רשימת פקודות נפוצות ועוטף אותן ב-\( ... \) אם הן לא עטופות
+      // ב. זיהוי פקודות בודדות עירומות (Inline bare commands)
       const latexCommands = [
         'frac', 'sqrt', 'sum', 'prod', 'int', 'lim',
-        'sigma', 'alpha', 'beta', 'gamma', 'delta', 'mu', 'pi', 'rho', 'tau', 'lambda', 'theta',
-        'bar', 'hat', 'infty'
+        'sigma', 'alpha', 'beta', 'gamma', 'delta', 'mu', 'pi', 'rho', 'tau', 'lambda', 'theta', 'chi', 'psi', 'omega',
+        'bar', 'hat', 'infty', 'cdot', 'approx'
       ];
 
-      latexCommands.forEach(cmd => {
-        // Regex הסבר:
-        // ([^\$\\]|^) -> תו שאינו $ או \ (או תחילת שורה)
-        // (\\\\${cmd}(?:\\{[^}]+\\})*) -> הפקודה והארגומנטים שלה (למשל \frac{a}{b})
-        // (?![^$]*\$) -> Lookahead לוודא שאנחנו לא בתוך אזור מתמטי קיים
-        const regex = new RegExp(`([^\\$\\\\]|^)(\\\\${cmd}(?:\\{[^\\}]+\\})*)`, 'g');
-        
-        processed = processed.replace(regex, (match, prefix, formula) => {
-          // בדיקת בטיחות כפולה
-          if (prefix.includes('$$')) return match;
-          return prefix + '\\(' + formula + '\\)';
-        });
+      // יוצר regex אחד גדול לכל הפקודות.
+      // תבנית: מתחיל ב-\, שם הפקודה, ואופציונלית סוגריים {} (למשל \frac{a}{b})
+      const cmdPattern = latexCommands.join('|');
+      const regex = new RegExp(`(\\\\(?:${cmdPattern})(?:\\{[^}]*\\})*)`, 'g');
+
+      processed = processed.replace(regex, (match) => {
+        // אם מצאנו טוקן הגנה, לא נוגעים בו
+        if (match.includes('%%%MATH')) return match;
+        return `\\(${match}\\)`;
       });
 
-      // שלב 3: ניקוי סופי
-      // הסרת כפילויות שאולי נוצרו בטעות
-      processed = processed.replace(/\$\$\$\$/g, '$$');
-      processed = processed.replace(/\\\(\s*\\\(/g, '\\(');
+      // 5. שחזור (Restore): החזרת הנוסחאות המקוריות למקומן
+      // מבצעים את זה בלולאה למקרה שנוצרו טוקנים חדשים בשלב 4א
+      processed = processed.replace(/%%%MATH(\d+)%%%/g, (match, index) => {
+          return placeholders[parseInt(index)];
+      });
       
+      // שלב הגנה נוסף: לפעמים נוצרים placeholders חדשים בתוך התהליך, 
+      // אז נריץ שוב כדי לוודא שכולם חזרו (למקרה של קינון נדיר)
+      processed = processed.replace(/%%%MATH(\d+)%%%/g, (match, index) => {
+        return placeholders[parseInt(index)];
+      });
+
       return processed;
     }
 
