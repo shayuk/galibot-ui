@@ -196,8 +196,19 @@
       // שלב 2: זיהוי נוסחאות מורכבות בשורה נפרדת (block formulas)
       // דפוס: שורה שמכילה נוסחה LaTeX מורכבת שמתחילה עם אות או משתנה ואחריה =
       // דוגמה: t = \frac{...} או \sigma = \sqrt{...}
+      // שיפור: גם נוסחאות שמתחילות ישר עם נוסחה LaTeX
       processed = processed.replace(/(?:^|\n\n)([a-zA-Z_]\w*\s*=\s*[^\n]*(?:\\frac|\\sqrt|\\sum|\\int|\\lim|\\prod|\\bar)[^\n]*)(?:\n\n|$)/gm, (match, formula) => {
         if (!match.includes('$$') && !match.includes('\\[') && !match.includes('\\(')) {
+          return '\n\n$$' + formula.trim() + '$$\n\n';
+        }
+        return match;
+      });
+      
+      // זיהוי נוסחאות שמתחילות ישר עם נוסחה LaTeX (ללא משתנה לפני =)
+      processed = processed.replace(/(?:^|\n\n)([^\n]*(?:\\frac|\\sqrt|\\sum|\\int|\\lim|\\prod|\\bar)[^\n]{10,})(?:\n\n|$)/gm, (match, formula) => {
+        // אם זה לא כבר עטוף ויש לפחות 10 תווים (נוסחה מורכבת)
+        if (!match.includes('$$') && !match.includes('\\[') && !match.includes('\\(') && 
+            formula.length > 10 && (formula.includes('\\frac') || formula.includes('\\sqrt'))) {
           return '\n\n$$' + formula.trim() + '$$\n\n';
         }
         return match;
@@ -262,8 +273,13 @@
       
       // שלב 4.5: זיהוי נוסחאות מורכבות inline שמתחילות עם משתנה ואחריהן =
       // דוגמה: t = \frac{...} או x = \sqrt{...}
+      // שיפור: גם נוסחאות מורכבות יותר עם \sqrt{...} שכוללות \frac
       processed = processed.replace(/([^$\(]|^)([a-zA-Z_]\w*\s*=\s*(?:\\frac|\\sqrt|\\sum|\\int|\\lim|\\prod|\\bar)[^\s\)]+)/g, (match, before, formula) => {
         if (!before.includes('\\(') && !before.includes('$$') && !before.includes('\\[')) {
+          // אם זו נוסחה מורכבת (מכילה \sqrt או \frac), נעטוף ב-$$ במקום \(
+          if (formula.includes('\\sqrt') && formula.length > 20) {
+            return before + '$$' + formula + '$$';
+          }
           return before + '\\(' + formula + '\\)';
         }
         return match;
