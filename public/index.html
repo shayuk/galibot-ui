@@ -32,7 +32,7 @@
     }
     .chat {
       padding: 16px 20px;
-      height: 450px;
+      height: 600px;
       overflow-y: auto;
       background: #f9fafb;
     }
@@ -138,6 +138,10 @@
         ready: () => {
           console.log('MathJax is loaded and ready');
           MathJax.startup.defaultReady();
+          // הפעלה מחדש של MathJax על כל האלמנטים הקיימים
+          if (MathJax.typesetPromise) {
+            MathJax.typesetPromise(document.querySelectorAll('.message.bot')).catch(() => {});
+          }
         }
       }
     };
@@ -185,8 +189,16 @@
       // אבל נבדוק אם יש נוסחאות לא עטופות
       
       // שלב 2: זיהוי נוסחאות מורכבות בשורה נפרדת (block formulas)
-      // דפוס: שורה שמכילה נוסחה LaTeX מורכבת (כמו \frac, \sqrt, וכו')
-      processed = processed.replace(/(?:^|\n\n)([^\n]*(?:\\frac|\\sqrt|\\sum|\\int|\\lim|\\prod)\{[^}]+\}[^\n]*)(?:\n\n|$)/gm, (match, formula) => {
+      // דפוס: שורה שמכילה נוסחה LaTeX מורכבת (כמו \frac, \sqrt, \sum, וכו')
+      // כולל נוסחאות עם \sqrt{...} או נוסחאות מורכבות
+      processed = processed.replace(/(?:^|\n\n)([^\n]*\\sqrt\{[^}]+\}[^\n]*)(?:\n\n|$)/gm, (match, formula) => {
+        if (!match.includes('$$') && !match.includes('\\[') && !match.includes('\\(')) {
+          return '\n\n$$' + formula.trim() + '$$\n\n';
+        }
+        return match;
+      });
+      
+      processed = processed.replace(/(?:^|\n\n)([^\n]*(?:\\frac|\\sum|\\int|\\lim|\\prod)\{[^}]+\}[^\n]*)(?:\n\n|$)/gm, (match, formula) => {
         // אם זה לא כבר עטוף ב-$$ או \[
         if (!match.includes('$$') && !match.includes('\\[') && !match.includes('\\(')) {
           return '\n\n$$' + formula.trim() + '$$\n\n';
@@ -217,7 +229,8 @@
       
       // שלב 4: זיהוי נוסחאות \frac inline (בתוך טקסט) - הכי נפוץ
       // דפוס: \frac{...}{...} שלא עטוף
-      processed = processed.replace(/([^$\(\\]|^)(\\frac\{[^}]+\}\{[^}]+\})(?![^$]*\$)/g, (match, before, formula) => {
+      // שיפור: גם נוסחאות מורכבות יותר כמו \frac{1}{n-1}\sum
+      processed = processed.replace(/([^$\(\\]|^)(\\frac\{[^}]+\}\{[^}]+\}(?:\\sum|\\sqrt|\\int|\\prod)?[^\s\)]*)(?![^$]*\$)/g, (match, before, formula) => {
         // בדיקה אם זה לא כבר עטוף
         if (!before.includes('\\(') && !before.includes('$$') && !before.includes('\\[')) {
           return before + '\\(' + formula + '\\)';
@@ -353,24 +366,33 @@
                   botMsgEl.innerHTML = processedText.replace(/\n/g, '<br>');
                   chatEl.scrollTop = chatEl.scrollHeight;
                   
-                  // הפעלת MathJax על האלמנט (כל 15 תווים כדי לעדכן נוסחאות בזמן אמת)
-                  if (window.MathJax && window.MathJax.typesetPromise && fullAnswer.length % 15 === 0) {
+                  // הפעלת MathJax על האלמנט (כל 10 תווים כדי לעדכן נוסחאות בזמן אמת)
+                  if (window.MathJax && window.MathJax.typesetPromise && fullAnswer.length % 10 === 0) {
                     window.MathJax.typesetPromise([botMsgEl]).catch((err) => {
                       console.error('MathJax error:', err);
                     });
                   }
                 } else if (data.type === 'done') {
                   // הפעלת MathJax סופית כשהתשובה הושלמה - חשוב מאוד!
-                  if (window.MathJax && window.MathJax.typesetPromise) {
-                    window.MathJax.typesetPromise([botMsgEl]).then(() => {
-                      console.log('MathJax rendering completed');
-                    }).catch((err) => {
-                      console.error('MathJax error:', err);
-                    });
-                  } else if (window.MathJax && window.MathJax.typeset) {
-                    // Fallback ל-MathJax 2.x אם צריך
-                    window.MathJax.typeset([botMsgEl]);
-                  }
+                  // נמתין קצת כדי לוודא שכל התוכן נוסף
+                  setTimeout(() => {
+                    if (window.MathJax && window.MathJax.typesetPromise) {
+                      window.MathJax.typesetPromise([botMsgEl]).then(() => {
+                        console.log('MathJax rendering completed');
+                        // רענון נוסף אחרי 100ms כדי לוודא שהכל עובד
+                        setTimeout(() => {
+                          if (window.MathJax && window.MathJax.typesetPromise) {
+                            window.MathJax.typesetPromise([botMsgEl]).catch(() => {});
+                          }
+                        }, 100);
+                      }).catch((err) => {
+                        console.error('MathJax error:', err);
+                      });
+                    } else if (window.MathJax && window.MathJax.typeset) {
+                      // Fallback ל-MathJax 2.x אם צריך
+                      window.MathJax.typeset([botMsgEl]);
+                    }
+                  }, 50);
                   // סיום - אין צורך לעשות כלום
                   break;
                 } else if (data.type === 'error') {
