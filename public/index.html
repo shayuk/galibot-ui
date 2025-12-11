@@ -190,15 +190,20 @@
       
       let processed = text;
       
-      // שלב 1: זיהוי נוסחאות שכבר עטופות - נשאיר אותן כמו שהן
-      // אבל נבדוק אם יש נוסחאות לא עטופות
-      
-      // שלב 2: זיהוי נוסחאות שכבר עטופות ב-$$ - נשאיר אותן כמו שהן
+      // שלב 1: זיהוי נוסחאות שכבר עטופות ב-$$ - נשאיר אותן כמו שהן
       // אבל נוודא שהן מעוצבות נכון
       
-      // שלב 2.5: זיהוי נוסחאות מורכבות בשורה נפרדת (block formulas)
-      // דפוס: שורה שמכילה נוסחה LaTeX מורכבת (כמו \sqrt{...}, \frac{...}{...}, \sum, וכו')
-      // נחפש נוסחאות שמתחילות עם = או : ואחריהן נוסחה
+      // שלב 2: זיהוי נוסחאות מורכבות בשורה נפרדת (block formulas)
+      // דפוס: שורה שמכילה נוסחה LaTeX מורכבת שמתחילה עם אות או משתנה ואחריה =
+      // דוגמה: t = \frac{...} או \sigma = \sqrt{...}
+      processed = processed.replace(/(?:^|\n\n)([a-zA-Z_]\w*\s*=\s*[^\n]*(?:\\frac|\\sqrt|\\sum|\\int|\\lim|\\prod|\\bar)[^\n]*)(?:\n\n|$)/gm, (match, formula) => {
+        if (!match.includes('$$') && !match.includes('\\[') && !match.includes('\\(')) {
+          return '\n\n$$' + formula.trim() + '$$\n\n';
+        }
+        return match;
+      });
+      
+      // שלב 2.5: זיהוי נוסחאות שמתחילות עם = ואחריהן נוסחה מורכבת
       processed = processed.replace(/(?:^|\n\n)([^\n]*=\s*\\sqrt\{[^}]*\}[^\n]*)(?:\n\n|$)/gm, (match, formula) => {
         if (!match.includes('$$') && !match.includes('\\[') && !match.includes('\\(')) {
           return '\n\n$$' + formula.trim() + '$$\n\n';
@@ -206,7 +211,7 @@
         return match;
       });
       
-      // נוסחאות עם \sqrt{...} שכוללות \frac או \sum
+      // נוסחאות עם \sqrt{...} שכוללות \frac או \sum בתוכן
       processed = processed.replace(/(?:^|\n\n)([^\n]*\\sqrt\{[^}]*\\frac[^}]*\}[^\n]*)(?:\n\n|$)/gm, (match, formula) => {
         if (!match.includes('$$') && !match.includes('\\[') && !match.includes('\\(')) {
           return '\n\n$$' + formula.trim() + '$$\n\n';
@@ -214,7 +219,7 @@
         return match;
       });
       
-      // נוסחאות מורכבות אחרות
+      // נוסחאות מורכבות אחרות עם \frac, \sum, וכו'
       processed = processed.replace(/(?:^|\n\n)([^\n]*(?:\\frac|\\sum|\\int|\\lim|\\prod)\{[^}]+\}[^\n]*)(?:\n\n|$)/gm, (match, formula) => {
         // אם זה לא כבר עטוף ב-$$ או \[
         if (!match.includes('$$') && !match.includes('\\[') && !match.includes('\\(')) {
@@ -246,9 +251,18 @@
       
       // שלב 4: זיהוי נוסחאות \frac inline (בתוך טקסט) - הכי נפוץ
       // דפוס: \frac{...}{...} שלא עטוף
-      // שיפור: גם נוסחאות מורכבות יותר כמו \frac{1}{n-1}\sum
-      processed = processed.replace(/([^$\(\\]|^)(\\frac\{[^}]+\}\{[^}]+\}(?:\\sum|\\sqrt|\\int|\\prod)?[^\s\)]*)(?![^$]*\$)/g, (match, before, formula) => {
+      // שיפור: גם נוסחאות מורכבות יותר כמו \frac{1}{n-1}\sum או \frac{\bar{x}_1 - \bar{x}_2}{...}
+      processed = processed.replace(/([^$\(\\]|^)(\\frac\{[^}]+\}\{[^}]+\}(?:\\sum|\\sqrt|\\int|\\prod|\\bar)?[^\s\)]*)(?![^$]*\$)/g, (match, before, formula) => {
         // בדיקה אם זה לא כבר עטוף
+        if (!before.includes('\\(') && !before.includes('$$') && !before.includes('\\[')) {
+          return before + '\\(' + formula + '\\)';
+        }
+        return match;
+      });
+      
+      // שלב 4.5: זיהוי נוסחאות מורכבות inline שמתחילות עם משתנה ואחריהן =
+      // דוגמה: t = \frac{...} או x = \sqrt{...}
+      processed = processed.replace(/([^$\(]|^)([a-zA-Z_]\w*\s*=\s*(?:\\frac|\\sqrt|\\sum|\\int|\\lim|\\prod|\\bar)[^\s\)]+)/g, (match, before, formula) => {
         if (!before.includes('\\(') && !before.includes('$$') && !before.includes('\\[')) {
           return before + '\\(' + formula + '\\)';
         }
@@ -268,7 +282,7 @@
       const greekAndMath = [
         'alpha', 'beta', 'gamma', 'delta', 'epsilon', 'theta', 'lambda', 
         'mu', 'nu', 'pi', 'rho', 'sigma', 'tau', 'phi', 'chi', 'psi', 'omega',
-        'sum', 'int', 'prod', 'lim', 'inf', 'infty', 'sqrt', 'partial'
+        'sum', 'int', 'prod', 'lim', 'inf', 'infty', 'sqrt', 'partial', 'bar'
       ];
       
       for (const symbol of greekAndMath) {
@@ -285,6 +299,10 @@
           return match;
         });
       }
+      
+      // שלב 7: זיהוי נוסחאות שכבר עטופות ב-$$ אבל לא מעוצבות נכון
+      // נוודא שהן מעוצבות נכון על ידי MathJax
+      // זה לא צריך לעשות כלום כי MathJax יזהה אותן אוטומטית
       
       return processed;
     }
