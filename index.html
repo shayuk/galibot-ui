@@ -129,7 +129,6 @@
       }
     }
   </style>
-  <!-- MathJax לתמיכה בנוסחאות LaTeX -->
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
   <script>
     window.MathJax = {
@@ -188,8 +187,6 @@
       <button id="sendBtn">שליחה</button>
     </div>
     
-    <!-- Legal/Credit Banner - Must not be removed without approval -->
-    <!-- כל חומרי ההוראה, הדוגמאות והתכנים בבוט זה נכתבו ואושרו על-ידי ד״ר גלית מדר. © כל הזכויות שמורות. -->
     <div class="legal-banner" dir="rtl" lang="he">
       כל חומרי ההוראה, הדוגמאות והתכנים בבוט זה נכתבו ואושרו על-ידי ד״ר גלית מדר. © כל הזכויות שמורות.
     </div>
@@ -207,313 +204,65 @@
     // 👇 Use a fixed test email for now. Replace with actual user email when available.
     const USER_EMAIL = "test@ariel.ac.il";
 
-    // פונקציה לזיהוי ועיטוף נוסחאות LaTeX
+    // פונקציה לזיהוי ועיטוף נוסחאות LaTeX (מתוקנת)
     function processLatex(text) {
       if (!text) return text;
       
       let processed = text;
       
-      // שלב 0: ניקוי מוקדם של תווים שגויים מהבוט
-      // ניקוי תווים שגויים לפני כל עיבוד אחר
-      processed = processed.replace(/\$\$\$\\\$/g, '$$');      // $$$\$ → $$
-      processed = processed.replace(/\$\$\$/g, '$$');          // $$$ → $$
+      // שלב 1: ניקוי אגרסיבי של תווים שגויים שהבוט מחזיר
+      // מנקה סימני דולר כפולים ומשולשים בתחילת נוסחאות ובסופן
+      processed = processed.replace(/\$\$\$\\\$/g, '$$');
+      processed = processed.replace(/\$\$\$/g, '$$');
+      processed = processed.replace(/\n\$/g, '');
+      processed = processed.replace(/\$\s*$/g, '');
       
-      // תיקון נוסחאות שמסתיימות עם $ בודד אחרי $$
-      // דפוס: $$ נוסחה $ -> $$ נוסחה $$
-      // זה מטפל במקרים כמו: $$ נוסחה $ \n\n $
-      processed = processed.replace(/\$\$([^$]+)\$\s*\n\s*\n\s*\$/g, '$$$1$$');  // $$ נוסחה $ \n\n $ -> $$ נוסחה $$
-      processed = processed.replace(/\$\$([^$]+)\$\s*\n\s*\$/g, '$$$1$$');      // $$ נוסחה $ \n $ -> $$ נוסחה $$
-      processed = processed.replace(/\$\$([^$]+)\$\s*$/gm, '$$$1$$');           // $$ נוסחה $ -> $$ נוסחה $$
-      processed = processed.replace(/\$\$([^$]+)\$\s*\n/g, '$$$1$$\n');        // $$ נוסחה $ \n -> $$ נוסחה $$ \n
-      
-      // תיקון שורות שמכילות רק $ או $ עם רווחים
-      processed = processed.replace(/^\s*\$\s*$/gm, '');        // שורות שמכילות רק $
-      processed = processed.replace(/\n\$\s*\n/g, '\n');         // $ בודד בין שורות
-      processed = processed.replace(/\n\$/g, '\n');            // שורות שמסתיימות ב-$ (הסרת ה-$)
-      processed = processed.replace(/\$\s*$/gm, '');           // $ בודד בסוף שורה
-      
-      // תיקון נוסחאות עם $ באמצע הנוסחה (הסרת $ פנימיים שגויים)
-      // דפוס: נוסחה $ נוסחה -> נוסחה נוסחה (אם ה-$ לא חלק מ-$$ או \()
-      // אבל רק אם זה לא חלק מנוסחה שכבר עטופה ב-$$ או \(
-      processed = processed.replace(/([^$\\])\$\s+([^$])/g, '$1 $2');  // $ בודד עם רווחים -> רווח
-      processed = processed.replace(/([^$\\])\$\s*([^$])/g, '$1 $2');  // $ בודד ללא רווחים -> רווח
-      
-      // תיקון של \$ → $ (אבל רק אם זה לא חלק מ-\( או $$)
-      // נבדוק שלא זה חלק מנוסחה שכבר עטופה
-      processed = processed.replace(/(?<!\\\()\\\$(?!\()/g, '$');  // \$ → $ (אבל לא \( או \))
-      
-      // שלב 0.5: תיקון עיטוף כפול ומשובש - ניקוי אגרסיבי של עיטוף כפול
-      
-      // תיקון נוסחאות שמתחילות עם $$$\$ (כמו $$$\$sigma -> \sigma)
-      processed = processed.replace(/\$\$\$\\\$([a-zA-Z])/g, '\\$1');
-      
-      // תיקון נוסחאות עם $$$...$$$ או $$$...$$ (הסרת $ נוסף)
-      processed = processed.replace(/\$\$\$([^$]+)\$\$\$/g, '$$$1$$');
-      processed = processed.replace(/\$\$\$([^$]+)\$\$/g, '$$$1$$');
-      processed = processed.replace(/\$\$([^$]+)\$\$\$/g, '$$$1$$');
-      
-      // תיקון נוסחאות שמתחילות עם $$$\$ ואחריהן נוסחה מורכבת עם $$ באמצע
-      // דפוס: $$$\$sigma = \sqrt{\frac{1}{N}$$ \sum_{i=1}^{N} (x_i - \mu)^2}$$
-      // צריך להפוך ל: $$ \sigma = \sqrt{ \frac{1}{N} \sum_{i=1}^{N} (x_i - \mu)^2 } $$
-      processed = processed.replace(/\$\$\$\\\$([a-zA-Z]+)\s*=\s*([^$]+)\$\$\s*([^$]+)\$\$/g, (match, varName, part1, part2) => {
-        // נוודא שיש רווחים נכונים ונוסחה נקייה
-        const cleanPart1 = part1.trim().replace(/\s+/g, ' ');  // ניקוי רווחים מיותרים
-        const cleanPart2 = part2.trim().replace(/\s+/g, ' ');  // ניקוי רווחים מיותרים
-        return '$$ \\' + varName + ' = ' + cleanPart1 + ' ' + cleanPart2 + ' $$';
-      });
-      
-      // תיקון נוסחאות עם $ באמצע הנוסחה (הסרת $ פנימיים שגויים)
-      // דפוס: נוסחה $ נוסחה -> נוסחה נוסחה (אם ה-$ לא חלק מ-$$ או \()
-      // אבל רק אם זה לא חלק מנוסחה שכבר עטופה ב-$$ או \(
-      processed = processed.replace(/([^$\\])\$\s+([^$])/g, '$1 $2');  // $ בודד עם רווחים -> רווח
-      processed = processed.replace(/([^$\\])\$\s*([^$])/g, '$1 $2');  // $ בודד ללא רווחים -> רווח
-      
-      // תיקון נוסחאות שמתחילות עם $$$\$ ואחריהן נוסחה (כמו $$$\$sigma = ...$$ -> $$ \sigma = ... $$)
-      processed = processed.replace(/\$\$\$\\\$([a-zA-Z]+)\s*=\s*([^$]+)\$\$/g, '$$ \\$1 = $2 $$');
-      
-      // תיקון נוסחאות עם $$ באמצע הנוסחה (הסרת $$ פנימיים)
-      // דפוס: $$...$$ נוסחה $$...$$ -> $$...נוסחה...$$
-      // זה מטפל בנוסחאות שמגיעות עם $$ באמצע (כמו $$...$$ נוסחה $$...$$)
-      // תיקון נוסחאות עם $$ באמצע (כמו $$...$$ נוסחה $$...$$)
-      processed = processed.replace(/\$\$([^$]+)\$\$\s*([^$]+)\$\$([^$]+)\$\$/g, '$$$1$2$3$$');
-      processed = processed.replace(/\$\$([^$]+)\$\$\s*([^$]+)\$\$/g, '$$$1$2$$');
-      
-      // תיקון נוסחאות שמתחילות עם $$$...$$ ואחריהן נוסחה נוספת (כמו $$$...$$ נוסחה $$...$$)
-      // דפוס: $$$...$$ נוסחה $$...$$ -> $$...נוסחה...$$
-      processed = processed.replace(/\$\$\$([^$]+)\$\$\s*([^$]+)\$\$([^$]+)\$\$/g, '$$$1$2$3$$');
-      processed = processed.replace(/\$\$\$([^$]+)\$\$\s*([^$]+)\$\$/g, '$$$1$2$$');
-      
-      // תיקון נוסחאות עם $$ באמצע שמכילות LaTeX commands (כמו \sqrt, \sum)
-      // דפוס: $$...\sqrt{...}$$ \sum...$$ -> $$ ...\sqrt{...} \sum... $$
-      // זה מטפל בנוסחאות שמגיעות עם $$ באמצע (כמו $$...$$ נוסחה $$...$$)
-      processed = processed.replace(/\$\$([^$]*\\sqrt\{[^}]+\}[^$]*)\$\$\s*([^$]*\\sum[^$]*)\$\$/g, (match, part1, part2) => {
-        // ניקוי רווחים מיותרים ונוודא שיש רווח אחד בין החלקים
-        const cleanPart1 = part1.trim().replace(/\s+/g, ' ');
-        const cleanPart2 = part2.trim().replace(/\s+/g, ' ');
-        return '$$ ' + cleanPart1 + ' ' + cleanPart2 + ' $$';
-      });
-      processed = processed.replace(/\$\$([^$]*\\frac[^$]*)\$\$\s*([^$]*\\sum[^$]*)\$\$/g, (match, part1, part2) => {
-        const cleanPart1 = part1.trim().replace(/\s+/g, ' ');
-        const cleanPart2 = part2.trim().replace(/\s+/g, ' ');
-        return '$$ ' + cleanPart1 + ' ' + cleanPart2 + ' $$';
-      });
-      
-      // תיקון נוסחאות שמתחילות עם \sigma או משתנה אחר ואחריהן = ואחריהן נוסחה עם $$ באמצע
-      // דפוס: \sigma = \sqrt{...}$$ \sum...$$ -> $$ \sigma = \sqrt{...} \sum... $$
-      processed = processed.replace(/(\\[a-zA-Z]+\s*=\s*[^$]*\\sqrt\{[^}]+\}[^$]*)\$\$\s*([^$]*\\sum[^$]*)\$\$/g, (match, part1, part2) => {
-        const cleanPart1 = part1.trim().replace(/\s+/g, ' ');
-        const cleanPart2 = part2.trim().replace(/\s+/g, ' ');
-        return '$$ ' + cleanPart1 + ' ' + cleanPart2 + ' $$';
-      });
-      processed = processed.replace(/(\\[a-zA-Z]+\s*=\s*[^$]*\\frac[^$]*)\$\$\s*([^$]*\\sum[^$]*)\$\$/g, (match, part1, part2) => {
-        const cleanPart1 = part1.trim().replace(/\s+/g, ' ');
-        const cleanPart2 = part2.trim().replace(/\s+/g, ' ');
-        return '$$ ' + cleanPart1 + ' ' + cleanPart2 + ' $$';
-      });
-      
-      // תיקון נוסחאות שמתחילות עם משתנה (ללא \) ואחריהן = ואחריהן נוסחה עם $$ באמצע
-      // דפוס: sigma = \sqrt{...}$$ \sum...$$ -> $$ \sigma = \sqrt{...} \sum... $$
-      processed = processed.replace(/([a-zA-Z]+\s*=\s*[^$]*\\sqrt\{[^}]+\}[^$]*)\$\$\s*([^$]*\\sum[^$]*)\$\$/g, (match, part1, part2) => {
-        // אם part1 מתחיל עם משתנה (לא \), נמיר אותו ל-\sigma אם זה sigma
-        let cleanPart1 = part1.trim().replace(/\s+/g, ' ');
-        if (cleanPart1.startsWith('sigma')) {
-          cleanPart1 = '\\sigma' + cleanPart1.substring(5);
-        }
-        const cleanPart2 = part2.trim().replace(/\s+/g, ' ');
-        return '$$ ' + cleanPart1 + ' ' + cleanPart2 + ' $$';
-      });
-      
-      // תיקון נוסחאות שמתחילות עם $$$...$$ ואחריהן נוסחה נוספת
-      // דפוס: $$$...$$ נוסחה $$...$$ -> $$...נוסחה...$$
-      processed = processed.replace(/\$\$\$([^$]+)\$\$\s*([^$]+)\$\$([^$]+)\$\$/g, '$$$1$2$3$$');
-      processed = processed.replace(/\$\$\$([^$]+)\$\$\s*([^$]+)\$\$/g, '$$$1$2$$');
-      
-      // תיקון נוסחאות עם \$\$ בתחילת הנוסחה (כמו \$\$sigma -> \sigma)
-      processed = processed.replace(/\$\$\\\$([a-zA-Z])/g, '$$\\$1');
-      
-      // תיקון נוסחאות עם $$...$$ ואחריהן $ נוסף
-      processed = processed.replace(/\$\$([^$]+)\$\$\s*\$/g, '$$$1$$');
-      processed = processed.replace(/\$\$([^$]+)\$\$\s*\n\s*\$/g, '$$$1$$');
-      
-      // תיקון נוסחאות שמסתיימות עם $ בודד אחרי $$ (שוב, למקרה שלא טופל בשלב 0)
-      processed = processed.replace(/\$\$([^$]+)\$\s*$/gm, '$$$1$$');
-      processed = processed.replace(/\$\$([^$]+)\$\s*\n/g, '$$$1$$\n');
-      
-      // תיקון נוסחאות עם רווחים מיותרים בין $$ לבין התוכן
-      processed = processed.replace(/\$\$\s+([^\s$])/g, '$$ $1');  // רווחים מיותרים אחרי $$
-      processed = processed.replace(/([^\s$])\s+\$\$/g, '$1 $$');  // רווחים מיותרים לפני $$
-      
-      // תיקון עיטוף כפול של \[...\] עם $$...$$
-      processed = processed.replace(/\\\[\s*\$\$\\\$([^$]+)\$\$\s*\\\]/g, '$$$1$$');
-      processed = processed.replace(/\\\[\s*\$\$([^$]+)\$\$\s*\\\]/g, '$$$1$$');
-      processed = processed.replace(/\$\$\s*\\\[([^\]]+)\\\]\s*\$\$/g, '$$$1$$');
-      
-      // תיקון סלאשים כפולים ב-$$ (כמו \$\$ -> $$)
+      // ניקוי נוסף למקרים של סלאש לפני דולר כפול
       processed = processed.replace(/\\\$\$/g, '$$');
       
-      // המרת \[...\] ל-$$...$$ (MathJax מזהה טוב יותר $$...$$)
-      processed = processed.replace(/\\\[\s*([^\]]+)\s*\\\]/g, '$$$1$$');
+      // שלב 2: זיהוי ועיטוף נוסחאות שלא עטופות (Bare LaTeX)
       
-      // תיקון נוסחאות עם סלאשים כפולים בתוכן (כמו \$\$sigma -> \sigma)
-      // זה צריך להיות לפני תיקון נוסחאות אחרות
-      processed = processed.replace(/\\\$([a-zA-Z])/g, '\\$1');
-      
-      // תיקון נוסחאות שמתחילות עם \$\$ (כמו \$\$sigma -> \sigma)
-      processed = processed.replace(/\$\$\\\$([a-zA-Z])/g, '$$\\$1');
-      
-      // שלב 1: זיהוי נוסחאות שכבר עטופות ב-$$ או \[ - נשאיר אותן כמו שהן
-      // אבל נוודא שהן מעוצבות נכון
-      
-      // שלב 2: זיהוי נוסחאות מורכבות בשורה נפרדת (block formulas)
-      // דפוס: שורה שמכילה נוסחה LaTeX מורכבת שמתחילה עם אות או משתנה ואחריה =
-      // דוגמה: t = \frac{...} או \sigma = \sqrt{...}
-      // שיפור: גם נוסחאות שמתחילות ישר עם נוסחה LaTeX
-      processed = processed.replace(/(?:^|\n\n)([a-zA-Z_]\w*\s*=\s*[^\n]*(?:\\frac|\\sqrt|\\sum|\\int|\\lim|\\prod|\\bar)[^\n]*)(?:\n\n|$)/gm, (match, formula) => {
-        if (!match.includes('$$') && !match.includes('\\[') && !match.includes('\\(')) {
-          return '\n\n$$' + formula.trim() + '$$\n\n';
-        }
-        return match;
-      });
-      
-      // זיהוי נוסחאות שמתחילות ישר עם נוסחה LaTeX (ללא משתנה לפני =)
-      processed = processed.replace(/(?:^|\n\n)([^\n]*(?:\\frac|\\sqrt|\\sum|\\int|\\lim|\\prod|\\bar)[^\n]{10,})(?:\n\n|$)/gm, (match, formula) => {
-        // אם זה לא כבר עטוף ויש לפחות 10 תווים (נוסחה מורכבת)
-        if (!match.includes('$$') && !match.includes('\\[') && !match.includes('\\(') && 
-            formula.length > 10 && (formula.includes('\\frac') || formula.includes('\\sqrt'))) {
-          return '\n\n$$' + formula.trim() + '$$\n\n';
-        }
-        return match;
-      });
-      
-      // שלב 2.5: זיהוי נוסחאות שמתחילות עם = ואחריהן נוסחה מורכבת
-      processed = processed.replace(/(?:^|\n\n)([^\n]*=\s*\\sqrt\{[^}]*\}[^\n]*)(?:\n\n|$)/gm, (match, formula) => {
-        if (!match.includes('$$') && !match.includes('\\[') && !match.includes('\\(')) {
-          return '\n\n$$' + formula.trim() + '$$\n\n';
-        }
-        return match;
-      });
-      
-      // נוסחאות עם \sqrt{...} שכוללות \frac או \sum בתוכן
-      processed = processed.replace(/(?:^|\n\n)([^\n]*\\sqrt\{[^}]*\\frac[^}]*\}[^\n]*)(?:\n\n|$)/gm, (match, formula) => {
-        if (!match.includes('$$') && !match.includes('\\[') && !match.includes('\\(')) {
-          return '\n\n$$' + formula.trim() + '$$\n\n';
-        }
-        return match;
-      });
-      
-      // נוסחאות מורכבות אחרות עם \frac, \sum, וכו'
-      processed = processed.replace(/(?:^|\n\n)([^\n]*(?:\\frac|\\sum|\\int|\\lim|\\prod)\{[^}]+\}[^\n]*)(?:\n\n|$)/gm, (match, formula) => {
-        // אם זה לא כבר עטוף ב-$$ או \[
-        if (!match.includes('$$') && !match.includes('\\[') && !match.includes('\\(')) {
-          return '\n\n$$' + formula.trim() + '$$\n\n';
-        }
-        return match;
-      });
-      
-      // שלב 3: זיהוי נוסחאות עם \text{...} = \frac{...}{...} - נוסחאות מורכבות עם טקסט
-      // דפוס: \text{ממוצע} = \frac{...}{...} או \text{ממוצע}=\frac{...}{...}
-      // זה צריך להיות לפני זיהוי \frac פשוט כי זה יותר ספציפי
-      processed = processed.replace(/([^$\(]|^)(\\text\{[^}]+\}\s*=\s*\\frac\{[^}]+\}\{[^}]+\})/g, (match, before, formula) => {
-        if (!before.includes('\\(') && !before.includes('$$') && !before.includes('\\[')) {
-          return before + '\\(' + formula + '\\)';
-        }
-        return match;
-      });
-      
-      // שלב 3.5: זיהוי נוסחאות עם \text{...} = נוסחה (כל סוג נוסחה)
-      // דפוס: \text{ממוצע} = \frac{...}{...} או \text{ממוצע} = נוסחה אחרת
-      processed = processed.replace(/([^$\(]|^)(\\text\{[^}]+\}\s*=\s*[^\n]+)/g, (match, before, formula) => {
-        // בדיקה אם יש נוסחה LaTeX בנוסחה
-        if (!before.includes('\\(') && !before.includes('$$') && !before.includes('\\[') && 
-            (formula.includes('\\frac') || formula.includes('\\sqrt') || (formula.includes('\\') && formula.match(/\\[a-zA-Z]+/)))) {
-          return before + '\\(' + formula.trim() + '\\)';
-        }
-        return match;
-      });
-      
-      // שלב 4: זיהוי נוסחאות \frac inline (בתוך טקסט) - הכי נפוץ
-      // דפוס: \frac{...}{...} שלא עטוף
-      // שיפור: גם נוסחאות מורכבות יותר כמו \frac{1}{n-1}\sum או \frac{\bar{x}_1 - \bar{x}_2}{...}
-      processed = processed.replace(/([^$\(\\]|^)(\\frac\{[^}]+\}\{[^}]+\}(?:\\sum|\\sqrt|\\int|\\prod|\\bar)?[^\s\)]*)(?![^$]*\$)/g, (match, before, formula) => {
-        // בדיקה אם זה לא כבר עטוף
-        if (!before.includes('\\(') && !before.includes('$$') && !before.includes('\\[')) {
-          return before + '\\(' + formula + '\\)';
-        }
-        return match;
-      });
-      
-      // שלב 4.5: זיהוי נוסחאות מורכבות inline שמתחילות עם משתנה ואחריהן =
-      // דוגמה: t = \frac{...} או x = \sqrt{...}
-      // שיפור: גם נוסחאות מורכבות יותר עם \sqrt{...} שכוללות \frac
-      processed = processed.replace(/([^$\(]|^)([a-zA-Z_]\w*\s*=\s*(?:\\frac|\\sqrt|\\sum|\\int|\\lim|\\prod|\\bar)[^\s\)]+)/g, (match, before, formula) => {
-        if (!before.includes('\\(') && !before.includes('$$') && !before.includes('\\[')) {
-          // אם זו נוסחה מורכבת (מכילה \sqrt או \frac), נעטוף ב-$$ במקום \(
-          if (formula.includes('\\sqrt') && formula.length > 20) {
-            return before + '$$' + formula + '$$';
-          }
-          return before + '\\(' + formula + '\\)';
-        }
-        return match;
-      });
-      
-      // שלב 5: זיהוי נוסחאות \sqrt inline
-      processed = processed.replace(/([^$\(\\]|^)(\\sqrt\{[^}]+\})(?![^$]*\$)/g, (match, before, formula) => {
-        if (!before.includes('\\(') && !before.includes('$$') && !before.includes('\\[')) {
-          return before + '\\(' + formula + '\\)';
-        }
-        return match;
-      });
-      
-      // שלב 6: זיהוי משתנים יווניים וסימנים מתמטיים נפוצים inline
-      // רשימה של סימנים נפוצים בסטטיסטיקה
-      const greekAndMath = [
-        'alpha', 'beta', 'gamma', 'delta', 'epsilon', 'theta', 'lambda', 
-        'mu', 'nu', 'pi', 'rho', 'sigma', 'tau', 'phi', 'chi', 'psi', 'omega',
-        'sum', 'int', 'prod', 'lim', 'inf', 'infty', 'sqrt', 'partial', 'bar'
-      ];
-      
-      for (const symbol of greekAndMath) {
-        // דפוס: \symbol או \symbol{...} שלא עטוף
-        const pattern = new RegExp(`([^$\(\\\\]|^)(\\\\${symbol}(?:\\{[^}]+\\})*)(?![^$]*\\$)`, 'g');
-        processed = processed.replace(pattern, (match, before, formula) => {
-          // בדיקה אם זה לא כבר עטוף או חלק מנוסחה מורכבת יותר
-          if (!before.includes('\\(') && !before.includes('$$') && !before.includes('\\[')) {
-            // בדיקה אם זה לא חלק מ-\frac או \sqrt שכבר טופלו
-            if (!before.includes('\\frac') && !before.includes('\\sqrt') && !before.includes('\\text')) {
-              return before + '\\(' + formula + '\\)';
-            }
+      // א. נוסחאות מורכבות בשורה נפרדת (Block Math)
+      // מזהה שורות שמתחילות בנוסחה LaTeX "כבדה" (כמו שברים, שורשים)
+      // דוגמה: sigma = \sqrt{...}
+      processed = processed.replace(/(?:^|\n\n)([a-zA-Z0-9_]+\s*=\s*)?(\\[a-zA-Z]+.*?)(\n\n|$)/g, function(match, variable, formula) {
+          // אם כבר עטוף ב-$$ או \[ - דלג
+          if (match.includes('$$') || match.includes('\\[')) return match;
+          
+          // אם הנוסחה מכילה פקודות מורכבות, נעטוף אותה ב-$$
+          if (formula.includes('\\frac') || formula.includes('\\sqrt') || formula.includes('\\sum') || formula.includes('\\int')) {
+              // מחזירים את המחרוזת עטופה ב-$$ ומנקים רווחים
+              return '\n\n$$ ' + (variable || '') + formula.trim() + ' $$\n\n';
           }
           return match;
+      });
+
+      // ב. נוסחאות בתוך שורה (Inline Math)
+      // עובר על רשימת פקודות נפוצות ועוטף אותן ב-\( ... \) אם הן לא עטופות
+      const latexCommands = [
+        'frac', 'sqrt', 'sum', 'prod', 'int', 'lim',
+        'sigma', 'alpha', 'beta', 'gamma', 'delta', 'mu', 'pi', 'rho', 'tau', 'lambda', 'theta',
+        'bar', 'hat', 'infty'
+      ];
+
+      latexCommands.forEach(cmd => {
+        // Regex הסבר:
+        // ([^\$\\]|^) -> תו שאינו $ או \ (או תחילת שורה)
+        // (\\\\${cmd}(?:\\{[^}]+\\})*) -> הפקודה והארגומנטים שלה (למשל \frac{a}{b})
+        // (?![^$]*\$) -> Lookahead לוודא שאנחנו לא בתוך אזור מתמטי קיים
+        const regex = new RegExp(`([^\\$\\\\]|^)(\\\\${cmd}(?:\\{[^\\}]+\\})*)`, 'g');
+        
+        processed = processed.replace(regex, (match, prefix, formula) => {
+          // בדיקת בטיחות כפולה
+          if (prefix.includes('$$')) return match;
+          return prefix + '\\(' + formula + '\\)';
         });
-      }
-      
-      // שלב 7: ניקוי נוסף של נוסחאות עם $$ באמצע - טיפול ספציפי בנוסחאות מורכבות
-      // דפוס: נוסחה שמתחילה עם משתנה או \sigma ואחריהן = ואחריהן נוסחה עם $$ באמצע
-      // דוגמה: \sigma = \sqrt{\frac{1}{N}$$ \sum_{i=1}^{N} (x_i - \mu)^2}$$
-      // צריך להפוך ל: $$ \sigma = \sqrt{ \frac{1}{N} \sum_{i=1}^{N} (x_i - \mu)^2 } $$
-      
-      // תיקון נוסחאות שמתחילות עם \sigma או משתנה אחר ואחריהן = ואחריהן נוסחה עם $$ באמצע
-      processed = processed.replace(/(\\sigma\s*=\s*[^$]*\\sqrt\{[^}]*)\$\$\s*([^$]*\\sum[^$]*)\$\$/g, (match, part1, part2) => {
-        // נוודא שיש רווחים נכונים
-        return '$$ ' + part1 + ' ' + part2 + ' $$';
       });
-      
-      // תיקון נוסחאות שמתחילות עם משתנה ואחריהן = ואחריהן נוסחה עם $$ באמצע
-      processed = processed.replace(/([a-zA-Z]+\s*=\s*[^$]*\\sqrt\{[^}]*)\$\$\s*([^$]*\\sum[^$]*)\$\$/g, (match, part1, part2) => {
-        // אם זה מתחיל עם sigma (ללא \), נמיר ל-\sigma
-        if (part1.startsWith('sigma')) {
-          part1 = '\\sigma' + part1.substring(5);
-        }
-        return '$$ ' + part1 + ' ' + part2 + ' $$';
-      });
-      
-      // שלב 8: ניקוי רווחים מיותרים בתוך נוסחאות $$...$$
-      // נוודא שיש רווח אחד לפני ואחרי הנוסחה בתוך $$
-      processed = processed.replace(/\$\$\s*([^\s$])([^$]*?)([^\s$])\s*\$\$/g, '$$ $1$2$3 $$');
-      
-      // שלב 9: זיהוי נוסחאות שכבר עטופות ב-$$ אבל לא מעוצבות נכון
-      // נוודא שהן מעוצבות נכון על ידי MathJax
-      // זה לא צריך לעשות כלום כי MathJax יזהה אותן אוטומטית
+
+      // שלב 3: ניקוי סופי
+      // הסרת כפילויות שאולי נוצרו בטעות
+      processed = processed.replace(/\$\$\$\$/g, '$$');
+      processed = processed.replace(/\\\(\s*\\\(/g, '\\(');
       
       return processed;
     }
@@ -688,4 +437,3 @@
   </script>
 </body>
 </html>
-
