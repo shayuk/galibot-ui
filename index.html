@@ -206,13 +206,56 @@
     // 👇 Use a fixed test email for now. Replace with actual user email when available.
     const USER_EMAIL = "test@ariel.ac.il";
 
+    // פונקציה לניקוי נוסחאות LaTeX - אותה לוגיקה כמו ב-backend
+    function cleanLaTeXFormulas(text) {
+      if (!text || typeof text !== 'string') return text;
+      
+      let cleaned = text;
+      
+      // Remove triple or more dollar signs ($$$, $$$$, etc.)
+      cleaned = cleaned.replace(/\$\$\$+/g, '$$');
+      
+      // Fix escaped dollar signs that should be regular dollars
+      cleaned = cleaned.replace(/\\\$/g, '$');
+      
+      // Convert \[...\] to $$...$$ (display math)
+      cleaned = cleaned.replace(/\\\[([^\]]+)\\\]/g, '$$$1$$');
+      
+      // Remove trailing $ signs that appear incorrectly
+      cleaned = cleaned.replace(/\$\s*$/gm, '');
+      
+      // Fix malformed combinations like $\$$ or $$$\$$
+      cleaned = cleaned.replace(/\$\$?\$+/g, '$$');
+      
+      // Clean up extra spaces within formulas
+      cleaned = cleaned.replace(/\$\$\s+/g, '$$');
+      cleaned = cleaned.replace(/\s+\$\$/g, '$$');
+      
+      // Fix common LaTeX command issues (double backslashes)
+      cleaned = cleaned.replace(/\\\\frac/g, '\\frac');
+      cleaned = cleaned.replace(/\\\\sqrt/g, '\\sqrt');
+      cleaned = cleaned.replace(/\\\\mu/g, '\\mu');
+      cleaned = cleaned.replace(/\\\\sigma/g, '\\sigma');
+      cleaned = cleaned.replace(/\\\\bar/g, '\\bar');
+      cleaned = cleaned.replace(/\\\\alpha/g, '\\alpha');
+      cleaned = cleaned.replace(/\\\\beta/g, '\\beta');
+      cleaned = cleaned.replace(/\\\\gamma/g, '\\gamma');
+      cleaned = cleaned.replace(/\\\\delta/g, '\\delta');
+      cleaned = cleaned.replace(/\\\\pi/g, '\\pi');
+      cleaned = cleaned.replace(/\\\\theta/g, '\\theta');
+      cleaned = cleaned.replace(/\\\\lambda/g, '\\lambda');
+      
+      return cleaned;
+    }
+
     // פונקציה לזיהוי ועיטוף נוסחאות LaTeX (הגרסה המתוקנת והמוגנת)
     function processLatex(text) {
       if (!text) return text;
       
-      let processed = text;
+      // שלב 0: ניקוי ראשוני של נוסחאות LaTeX (כמו ב-backend)
+      let processed = cleanLaTeXFormulas(text);
       
-      // 1. ניקוי אגרסיבי של "זבל" שהבוט מחזיר
+      // 1. ניקוי אגרסיבי נוסף של "זבל" שהבוט מחזיר
       processed = processed.replace(/\$\$\$\\\$/g, '$$');
       processed = processed.replace(/\$\$\$/g, '$$');
       processed = processed.replace(/\\\$\$/g, '$$');
