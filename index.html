@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8" />
   <title>GaliBot – צ'אט לסטודנטים</title>
-  <!-- Favicon - מונע שגיאת 404 -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>" />
   <style>
     body {
@@ -113,7 +112,6 @@
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
-    /* Legal/Credit Banner - Must not be removed without approval */
     .legal-banner {
       border-top: 1px solid #e5e7eb;
       padding: 10px 20px;
@@ -124,51 +122,29 @@
       line-height: 1.5;
       direction: rtl;
     }
-    @media (max-width: 600px) {
-      .legal-banner {
-        font-size: 0.7rem;
-        padding: 8px 16px;
-      }
-    }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+  
   <script>
+    // הגדרה מוקדמת של MathJax - תמיכה בדולר יחיד ל-inline
     window.MathJax = {
       tex: {
-        inlineMath: [['\\(', '\\)']],
-        displayMath: [['$$', '$$']],
-        processEscapes: true,
-        processEnvironments: true,
-        autoload: {
-          color: [],
-          colorv2: ['color'],
-          bbox: ['bbox'],
-          cancel: ['cancel', 'bcancel', 'xcancel'],
-          enclose: ['enclose']
-        }
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']],
+        processEscapes: true
       },
       options: {
         skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre'],
-        ignoreHtmlClass: 'tex2jax_ignore',
-        processHtmlClass: 'tex2jax_process',
         enableMenu: false
       },
       startup: {
         ready: () => {
-          console.log('MathJax is loaded and ready');
+          console.log('MathJax is ready');
           MathJax.startup.defaultReady();
-          // הפעלה מחדש של MathJax על כל האלמנטים הקיימים
-          setTimeout(() => {
-            if (MathJax.typesetPromise) {
-              MathJax.typesetPromise(document.querySelectorAll('.message.bot')).then(() => {
-                console.log('MathJax rendered existing messages');
-              }).catch(() => {});
-            }
-          }, 100);
         }
       }
     };
   </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 </head>
 <body>
   <div class="container">
@@ -178,7 +154,7 @@
 
     <div id="chat" class="chat">
       <div class="message bot">
-        היי 👋 אני גלי־בוט. אפשר לשאול אותי שאלות על סטטיסטיקה, SPSS ותרגול לקורס.
+        היי 👋 אני גלי־בוט. איזה כיף שהצטרפת! אני כאן לעזור לך בסטטיסטיקה צעד-אחרי-צעד. ממה נתחיל היום?
       </div>
     </div>
 
@@ -196,155 +172,34 @@
 
   <script>
     const API_URL = "https://lecturers-gpt-server.onrender.com/api/ask/stream";
-    // שימו לב: API_URL כבר מכיל את ה-streaming endpoint
-
     const chatEl = document.getElementById("chat");
     const inputEl = document.getElementById("input");
     const sendBtn = document.getElementById("sendBtn");
     const statusEl = document.getElementById("status");
-
-    // 👇 Use a fixed test email for now. Replace with actual user email when available.
     const USER_EMAIL = "test@ariel.ac.il";
 
-    // פונקציה לניקוי נוסחאות LaTeX - אותה לוגיקה כמו ב-backend
-    function cleanLaTeXFormulas(text) {
-      if (!text || typeof text !== 'string') return text;
-      
-      let cleaned = text;
-      
-      // Remove triple or more dollar signs ($$$, $$$$, etc.)
-      cleaned = cleaned.replace(/\$\$\$+/g, '$$');
-      
-      // Fix escaped dollar signs that should be regular dollars
-      cleaned = cleaned.replace(/\\\$/g, '$');
-      
-      // Convert \[...\] to $$...$$ (display math)
-      cleaned = cleaned.replace(/\\\[([^\]]+)\\\]/g, '$$$1$$');
-      
-      // Remove trailing $ signs that appear incorrectly
-      cleaned = cleaned.replace(/\$\s*$/gm, '');
-      
-      // Fix malformed combinations like $\$$ or $$$\$$
-      cleaned = cleaned.replace(/\$\$?\$+/g, '$$');
-      
-      // Clean up extra spaces within formulas
-      cleaned = cleaned.replace(/\$\$\s+/g, '$$');
-      cleaned = cleaned.replace(/\s+\$\$/g, '$$');
-      
-      // Fix common LaTeX command issues (double backslashes)
-      cleaned = cleaned.replace(/\\\\frac/g, '\\frac');
-      cleaned = cleaned.replace(/\\\\sqrt/g, '\\sqrt');
-      cleaned = cleaned.replace(/\\\\mu/g, '\\mu');
-      cleaned = cleaned.replace(/\\\\sigma/g, '\\sigma');
-      cleaned = cleaned.replace(/\\\\bar/g, '\\bar');
-      cleaned = cleaned.replace(/\\\\alpha/g, '\\alpha');
-      cleaned = cleaned.replace(/\\\\beta/g, '\\beta');
-      cleaned = cleaned.replace(/\\\\gamma/g, '\\gamma');
-      cleaned = cleaned.replace(/\\\\delta/g, '\\delta');
-      cleaned = cleaned.replace(/\\\\pi/g, '\\pi');
-      cleaned = cleaned.replace(/\\\\theta/g, '\\theta');
-      cleaned = cleaned.replace(/\\\\lambda/g, '\\lambda');
-      
-      return cleaned;
-    }
-
-    // פונקציה לזיהוי ועיטוף נוסחאות LaTeX (הגרסה המתוקנת והמוגנת)
     function processLatex(text) {
       if (!text) return text;
-      
-      // שלב 0: ניקוי ראשוני של נוסחאות LaTeX (כמו ב-backend)
-      let processed = cleanLaTeXFormulas(text);
-      
-      // 1. ניקוי אגרסיבי נוסף של "זבל" שהבוט מחזיר
+      let processed = text;
+      // ניקוי עדין בלבד - נותנים ל-MathJax לעבוד
       processed = processed.replace(/\$\$\$\\\$/g, '$$');
       processed = processed.replace(/\$\$\$/g, '$$');
       processed = processed.replace(/\\\$\$/g, '$$');
-      // ניקוי דולרים בודדים בסוף טקסט או שורות
-      processed = processed.replace(/\n\$\s*$/g, '');
+      processed = processed.replace(/\\\[/g, '$$');
+      processed = processed.replace(/\\\]/g, '$$');
       processed = processed.replace(/\$\s*$/g, '');
-
-      // 2. נרמול: המרת \[...\] ל-$$...$$ כדי ליצור אחידות
-      processed = processed.replace(/\\\[/g, '$$').replace(/\\\]/g, '$$');
-
-      // 3. הגנה (Protection): זיהוי נוסחאות שכבר עטופות ב-$$ או \( והסתרתן
-      // זה מונע את הבאג שבו עוטפים \mu בתוך \frac שכבר עטוף
-      const placeholders = [];
-      const protect = (match) => {
-        placeholders.push(match);
-        return `%%%MATH${placeholders.length - 1}%%%`;
-      };
-
-      // זיהוי נוסחאות block ($$..$$) ו-inline (\(..\))
-      processed = processed.replace(/\$\$([\s\S]*?)\$\$/g, protect);
-      processed = processed.replace(/\\\(([\s\S]*?)\\\)/g, protect);
-
-      // 4. כעת ה-processed מכיל רק טקסט וטוקנים. אפשר לעבוד בבטחה על "נוסחאות עירומות".
-      
-      // א. זיהוי משוואות מורכבות עירומות (מכילות =, \, וסימנים כמו frac/sum)
-      processed = processed.replace(/(?:^|\n)([^%\n]+=[^%\n]*\\[a-zA-Z]+[^%\n]*)(?:\n|$)/g, (match, formula) => {
-          return '\n$$ ' + formula.trim() + ' $$\n';
-      });
-
-      // ב. זיהוי פקודות בודדות עירומות (Inline bare commands)
-      const latexCommands = [
-        'frac', 'sqrt', 'sum', 'prod', 'int', 'lim',
-        'sigma', 'alpha', 'beta', 'gamma', 'delta', 'mu', 'pi', 'rho', 'tau', 'lambda', 'theta', 'chi', 'psi', 'omega',
-        'bar', 'hat', 'infty', 'cdot', 'approx'
-      ];
-
-      // יוצר regex אחד גדול לכל הפקודות.
-      // תבנית: מתחיל ב-\, שם הפקודה, ואופציונלית סוגריים {} (למשל \frac{a}{b})
-      const cmdPattern = latexCommands.join('|');
-      const regex = new RegExp(`(\\\\(?:${cmdPattern})(?:\\{[^}]*\\})*)`, 'g');
-
-      processed = processed.replace(regex, (match) => {
-        // אם מצאנו טוקן הגנה, לא נוגעים בו
-        if (match.includes('%%%MATH')) return match;
-        return `\\(${match}\\)`;
-      });
-
-      // 5. שחזור (Restore): החזרת הנוסחאות המקוריות למקומן
-      // מבצעים את זה בלולאה למקרה שנוצרו טוקנים חדשים בשלב 4א
-      processed = processed.replace(/%%%MATH(\d+)%%%/g, (match, index) => {
-          return placeholders[parseInt(index)];
-      });
-      
-      // שלב הגנה נוסף: לפעמים נוצרים placeholders חדשים בתוך התהליך, 
-      // אז נריץ שוב כדי לוודא שכולם חזרו (למקרה של קינון נדיר)
-      processed = processed.replace(/%%%MATH(\d+)%%%/g, (match, index) => {
-        return placeholders[parseInt(index)];
-      });
-
       return processed;
     }
 
     function addMessage(role, text) {
       const msg = document.createElement("div");
       msg.className = "message " + role;
-      
-      // עיבוד LaTeX אם צריך
       const processedText = processLatex(text);
       msg.innerHTML = processedText.replace(/\n/g, '<br>');
-      
       chatEl.appendChild(msg);
       chatEl.scrollTop = chatEl.scrollHeight;
-      
-      // הפעלת MathJax על האלמנט החדש - עם retry
       if (window.MathJax && window.MathJax.typesetPromise) {
-        // נמתין קצת כדי לוודא שה-DOM עודכן
-        setTimeout(() => {
-          window.MathJax.typesetPromise([msg]).then(() => {
-            console.log('MathJax rendered for message');
-          }).catch((err) => {
-            console.error('MathJax error:', err);
-            // Retry אחרי 100ms
-            setTimeout(() => {
-              if (window.MathJax && window.MathJax.typesetPromise) {
-                window.MathJax.typesetPromise([msg]).catch(() => {});
-              }
-            }, 100);
-          });
-        }, 10);
+        window.MathJax.typesetPromise([msg]).catch(err => console.log(err));
       }
     }
 
@@ -352,44 +207,31 @@
       const text = inputEl.value.trim();
       if (!text) return;
 
-      // Add the user's message to the chat
       addMessage("user", text);
       inputEl.value = "";
       inputEl.focus();
       sendBtn.disabled = true;
-      statusEl.textContent = "גלי־בוט מחפשת במאגר החומרים...";
+      statusEl.textContent = "גלי־בוט חושבת...";
       statusEl.classList.add('loading');
 
       try {
-        // קריאה ל-streaming endpoint
         const response = await fetch(API_URL, {
           method: "POST",
-          mode: "cors",
-          headers: { 
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            email: USER_EMAIL,
-            prompt: text
-          })
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: USER_EMAIL, prompt: text })
         });
 
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
-        // עדכון סטטוס - התחלנו לקבל תשובה
-        statusEl.textContent = "גלי־בוט כותבת...";
+        statusEl.textContent = "גלי־בוט מקלידה...";
         statusEl.classList.add('loading');
 
-        // קריאת ה-stream token-by-token
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
         let fullAnswer = '';
         let firstTokenReceived = false;
         
-        // יצירת הודעת בוט ריקה שתתעדכן בזמן אמת
         const botMsgEl = document.createElement("div");
         botMsgEl.className = "message bot";
         botMsgEl.textContent = "";
@@ -401,12 +243,11 @@
 
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split('\n');
-          buffer = lines.pop(); // שמירת השורה האחרונה שלא הושלמה
+          buffer = lines.pop(); 
 
           for (const line of lines) {
             if (line.trim() === '') continue;
             
-            // טיפול ב-SSE format
             if (line.startsWith('data: ')) {
               try {
                 const data = JSON.parse(line.slice(6));
@@ -414,63 +255,28 @@
                 if (data.type === 'token') {
                   if (!firstTokenReceived) {
                     firstTokenReceived = true;
-                    statusEl.textContent = ""; // הסרת ההודעה כשהתשובה מתחילה
+                    statusEl.textContent = "";
                   }
-                  
                   fullAnswer += data.content;
-                  // עיבוד LaTeX ועדכון ה-UI עם התשובה החלקית
                   const processedText = processLatex(fullAnswer);
                   botMsgEl.innerHTML = processedText.replace(/\n/g, '<br>');
                   chatEl.scrollTop = chatEl.scrollHeight;
                   
-                  // הפעלת MathJax על האלמנט (כל 10 תווים כדי לעדכן נוסחאות בזמן אמת)
-                  if (window.MathJax && window.MathJax.typesetPromise && fullAnswer.length % 10 === 0) {
-                    // נמתין קצת כדי לוודא שה-DOM עודכן
-                    setTimeout(() => {
-                      window.MathJax.typesetPromise([botMsgEl]).catch((err) => {
-                        console.error('MathJax error:', err);
-                      });
-                    }, 10);
+                  if (fullAnswer.length % 50 === 0 && window.MathJax && window.MathJax.typesetPromise) {
+                     window.MathJax.typesetPromise([botMsgEl]).catch(()=>{});
                   }
                 } else if (data.type === 'done') {
-                  // הפעלת MathJax סופית כשהתשובה הושלמה - חשוב מאוד!
-                  // נמתין קצת כדי לוודא שכל התוכן נוסף
-                  setTimeout(() => {
-                    if (window.MathJax && window.MathJax.typesetPromise) {
-                      window.MathJax.typesetPromise([botMsgEl]).then(() => {
-                        console.log('MathJax rendering completed');
-                        // רענון נוסף אחרי 100ms כדי לוודא שהכל עובד
-                        setTimeout(() => {
-                          if (window.MathJax && window.MathJax.typesetPromise) {
-                            window.MathJax.typesetPromise([botMsgEl]).catch(() => {});
-                          }
-                        }, 100);
-                      }).catch((err) => {
-                        console.error('MathJax error:', err);
-                      });
-                    } else if (window.MathJax && window.MathJax.typeset) {
-                      // Fallback ל-MathJax 2.x אם צריך
-                      window.MathJax.typeset([botMsgEl]);
-                    }
-                  }, 50);
-                  // סיום - אין צורך לעשות כלום
+                  if (window.MathJax && window.MathJax.typesetPromise) {
+                    window.MathJax.typesetPromise([botMsgEl]);
+                  }
                   break;
-                } else if (data.type === 'error') {
-                  throw new Error(data.message);
                 }
-              } catch (e) {
-                console.error('Parse error:', e, 'Line:', line);
-              }
-            } else if (line.startsWith(': ')) {
-              // Comment line - ignore
-              continue;
+              } catch (e) { console.error(e); }
             }
           }
         }
-
       } catch (err) {
-        console.error("Fetch error:", err);
-        addMessage("bot", "שגיאה בתקשורת עם השרת: " + err.message);
+        addMessage("bot", "אופס, משהו השתבש: " + err.message);
       } finally {
         sendBtn.disabled = false;
         statusEl.textContent = "";
