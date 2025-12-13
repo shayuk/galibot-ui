@@ -919,14 +919,21 @@
                   sources = data.sources;
                 } else if (data.type === 'done') {
                   if (sources && sources.length > 0) {
-                    // הצגת מקורות בצורה מינימלית - רק שם קובץ בסוגריים
-                    const sourcesText = sources.map((s, i) => {
-                      // מחלץ רק את שם הקובץ (ללא נתיב מלא אם יש)
-                      const fileName = s.source ? s.source.split('/').pop().split('\\').pop() : `מקור ${i + 1}`;
-                      return `(${fileName})`;
-                    }).join(' ');
+                    // הסרת כפילויות - כל קובץ מוצג רק פעם אחת
+                    const uniqueFiles = new Set();
+                    sources.forEach((s) => {
+                      if (s.source) {
+                        const fileName = s.source.split('/').pop().split('\\').pop();
+                        uniqueFiles.add(fileName);
+                      }
+                    });
+                    
+                    // הצגת מקורות בצורה מינימלית - רק שם קובץ בסוגריים, ללא כפילויות
+                    const sourcesText = Array.from(uniqueFiles).map(fileName => `(${fileName})`).join(' ');
 
-                    updateBotMessage(fullAnswer + ' ' + sourcesText);
+                    if (sourcesText) {
+                      updateBotMessage(fullAnswer + ' ' + sourcesText);
+                    }
                   }
 
                   status.classList.remove('streaming');
