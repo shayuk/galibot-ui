@@ -447,6 +447,17 @@
 
       .message { max-width: 95%; }
     }
+
+    .legal-banner {
+      border-top: 1px solid var(--border);
+      padding: 10px 14px;
+      background: var(--panel);
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+      margin-top: 10px;
+    }
   </style>
 </head>
 
@@ -519,6 +530,10 @@
           <input type="email" id="emailInput" placeholder="הכנס/י כתובת מייל" value="test@ariel.ac.il" />
           <input type="text" id="messageInput" placeholder="כתבו שאלה כאן..." onkeypress="handleKeyPress(event)" />
           <button id="sendButton" type="button" onclick="sendMessage()">שלח</button>
+        </div>
+
+        <div class="legal-banner" dir="rtl" lang="he">
+          כל חומרי ההוראה, הדוגמאות והתכנים בבוט זה נכתבו ואושרו על-ידי ד״ר גלית מדר. © כל הזכויות שמורות.
         </div>
       </section>
     </main>
@@ -904,13 +919,14 @@
                   sources = data.sources;
                 } else if (data.type === 'done') {
                   if (sources && sources.length > 0) {
-                    const sourcesText =
-                      '\n\nמקורות:\n' +
-                      sources.map((s, i) =>
-                        `${i + 1}. ${s.source} (דמיון: ${(s.score * 100).toFixed(1)}%)`
-                      ).join('\n');
+                    // הצגת מקורות בצורה מינימלית - רק שם קובץ בסוגריים
+                    const sourcesText = sources.map((s, i) => {
+                      // מחלץ רק את שם הקובץ (ללא נתיב מלא אם יש)
+                      const fileName = s.source ? s.source.split('/').pop().split('\\').pop() : `מקור ${i + 1}`;
+                      return `(${fileName})`;
+                    }).join(' ');
 
-                    updateBotMessage(fullAnswer + sourcesText);
+                    updateBotMessage(fullAnswer + ' ' + sourcesText);
                   }
 
                   status.classList.remove('streaming');
