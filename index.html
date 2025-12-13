@@ -459,6 +459,28 @@
       margin-top: 10px;
     }
   </style>
+  
+  <!-- MathJax for LaTeX formula rendering -->
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']],
+        processEscapes: true
+      },
+      options: {
+        skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre'],
+        enableMenu: false
+      },
+      startup: {
+        ready: () => {
+          console.log('MathJax is ready');
+          MathJax.startup.defaultReady();
+        }
+      }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 </head>
 
 <body>
@@ -962,16 +984,33 @@
       const messagesDiv = document.getElementById('chatMessages');
       const messageDiv = document.createElement('div');
       messageDiv.className = `message ${type}-message`;
-      messageDiv.textContent = text;
+      // שימוש ב-innerHTML כדי לאפשר MathJax לעבוד
+      messageDiv.innerHTML = text.replace(/\n/g, '<br>');
       messagesDiv.appendChild(messageDiv);
       messageDiv.scrollIntoView({ behavior: 'smooth' });
+      
+      // עדכון MathJax אחרי הוספת הודעה חדשה
+      if (window.MathJax && window.MathJax.typesetPromise) {
+        window.MathJax.typesetPromise([messageDiv]).catch(err => {
+          console.log('MathJax typeset error:', err);
+        });
+      }
+      
       return messageDiv;
     }
 
     function updateBotMessage(text) {
       if (currentBotMessage) {
-        currentBotMessage.textContent = text;
+        // עדכון הטקסט עם HTML כדי לאפשר MathJax לעבוד
+        currentBotMessage.innerHTML = text.replace(/\n/g, '<br>');
         currentBotMessage.scrollIntoView({ behavior: 'smooth' });
+        
+        // עדכון MathJax אחרי שינוי התוכן
+        if (window.MathJax && window.MathJax.typesetPromise) {
+          window.MathJax.typesetPromise([currentBotMessage]).catch(err => {
+            console.log('MathJax typeset error:', err);
+          });
+        }
       }
     }
 
