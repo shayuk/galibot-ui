@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <title>העלאת PDF לחומרי קורס</title>
+  <title>העלאת חומרי קורס (PDF / טקסט)</title>
   <style>
     body {
       font-family: sans-serif;
@@ -11,19 +11,33 @@
       justify-content: center;
       align-items: center;
       height: 100vh;
+      margin: 0;
+      padding: 12px;
+      box-sizing: border-box;
     }
     form {
       background: white;
       padding: 20px;
       border-radius: 12px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-      width: 300px;
+      width: 340px;
       display: flex;
       flex-direction: column;
       gap: 12px;
     }
-    input, label, button {
+    input, label, button, textarea {
       font-size: 1rem;
+    }
+    textarea {
+      resize: vertical;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid #cbd5e1;
+    }
+    input[type="text"], input[type="file"] {
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid #cbd5e1;
     }
     button {
       background: #2563eb;
@@ -33,121 +47,158 @@
       border-radius: 8px;
       cursor: pointer;
     }
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
     .success {
       color: green;
       margin-top: 10px;
+      white-space: pre-line;
     }
     .error {
       color: red;
       margin-top: 10px;
+      white-space: pre-line;
+    }
+    .hint {
+      font-size: 0.9rem;
+      color: #475569;
+      margin-top: -6px;
     }
   </style>
 </head>
 <body>
   <form id="uploadForm">
+    <!-- אפשר לשנות למייל אחר אם צריך -->
     <input type="hidden" name="email" value="shayuk@ariel.ac.il">
 
     <label>בחרי קובצי PDF (עד 3 קבצים):</label>
     <input type="file" name="pdf" accept="application/pdf" multiple>
+    <div class="hint">טיפ: לבדיקת תקינות, התחילי עם PDF קטן אחד.</div>
 
     <label>או הדביקי כאן טקסט ישיר:</label>
     <textarea name="text" rows="4" placeholder="תוכן חומרי הקורס כאן..."></textarea>
+    <div class="hint">אם הדבקת טקסט – יישלח טקסט (גם אם בחרת PDF).</div>
 
     <label>מקור / כותרת:</label>
-    <input type="text" name="source" value="שיעור 1">
+    <input type="text" name="source" value="שיעור 1" placeholder="למשל: שיעור 1 – מבוא">
 
     <label>שם הקורס:</label>
-    <input type="text" name="course_name" value="statistics">
+    <input type="text" name="course_name" value="statistics" placeholder="למשל: statistics">
 
-    <button type="submit">העלאה</button>
+    <button id="submitBtn" type="submit">העלאה</button>
     <div id="message"></div>
   </form>
 
   <script>
     const form = document.getElementById('uploadForm');
     const message = document.getElementById('message');
+    const submitBtn = document.getElementById('submitBtn');
 
-form.addEventListener('submit', async (e) => {
-        message.textContent = '';
-        message.className = '';
-        e.preventDefault();
+    // ✅ חשוב: ב-GitHub Pages חייבים כתובת מלאה לשרת (Render)
+    const API_BASE_URL = "https://lecturers-gpt-server.onrender.com";
+    const UPLOAD_URL = `${API_BASE_URL}/api/upload-course-material`;
 
-        const email = form.querySelector('input[name="email"]').value.trim();
-        const source = form.querySelector('input[name="source"]').value.trim();
-        const course = form.querySelector('input[name="course_name"]').value.trim() || 'statistics';
-        const text = form.querySelector('textarea[name="text"]').value.trim();
-        const files = form.querySelector('input[name="pdf"]').files;
+    function setMessage(text, type) {
+      message.textContent = text;
+      message.className = type; // 'success' / 'error' / ''
+    }
 
-        // אם הוזן טקסט, נשלח אותו כ-JSON
-        if (text) {
-          try {
-            const res = await fetch('/api/upload-course-material', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                email: email,
-                text: text,
-                source: source || undefined,
-                course_name: course || undefined
-              })
-            });
-            const data = await res.json().catch(() => ({}));
-            if (res.ok) {
-              const chunks = data.chunksCount ?? data.chunks_saved ?? data.chunks ?? 0;
-              message.textContent = `✔ הטקסט הועלה בהצלחה (${chunks} קטעים נשמרו).`;
-              message.className = 'success';
-            } else {
-              message.textContent = `❌ שגיאה – ${data.error || data.message || 'קרתה תקלה'}`;
-              message.className = 'error';
-            }
-          } catch (err) {
-            message.textContent = '❌ שגיאה בתקשורת עם השרת.';
-            message.className = 'error';
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      setMessage('', '');
+      submitBtn.disabled = true;
+
+      const email = form.querySelector('input[name="email"]').value.trim();
+      const source = form.querySelector('input[name="source"]').value.trim();
+      const course = (form.querySelector('input[name="course_name"]').value || '').trim() || 'statistics';
+      const text = (form.querySelector('textarea[name="text"]').value || '').trim();
+      const files = form.querySelector('input[name="pdf"]').files;
+
+      if (!email) {
+        setMessage('❌ חסר email.', 'error');
+        submitBtn.disabled = false;
+        return;
+      }
+
+      // 1) אם הוזן טקסט — שולחים JSON
+      if (text) {
+        try {
+          const res = await fetch(UPLOAD_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email,
+              text,
+              source: source || undefined,
+              course_name: course || undefined
+            })
+          });
+
+          const data = await res.json().catch(() => ({}));
+          if (res.ok) {
+            const chunks = data.chunksCount ?? data.chunks_saved ?? data.chunks ?? 0;
+            setMessage(`✔ הטקסט הועלה בהצלחה (${chunks} קטעים נשמרו).`, 'success');
+          } else {
+            setMessage(`❌ שגיאה – ${data.error || data.message || 'קרתה תקלה'}`, 'error');
           }
-          return;
+        } catch (err) {
+          setMessage('❌ שגיאה בתקשורת עם השרת.', 'error');
+        } finally {
+          submitBtn.disabled = false;
         }
+        return;
+      }
 
-        // אם לא נבחרו קבצים ואין טקסט – הצג שגיאה
-        if (!files || files.length === 0) {
-          message.textContent = '❌ אנא בחרי לפחות קובץ אחד או הדביקי טקסט.';
-          message.className = 'error';
-          return;
-        }
+      // 2) אחרת — חייבים קבצים
+      if (!files || files.length === 0) {
+        setMessage('❌ אנא בחרי לפחות קובץ אחד או הדביקי טקסט.', 'error');
+        submitBtn.disabled = false;
+        return;
+      }
 
-        // בדיקת מספר קבצים
-        if (files.length > 3) {
-          message.textContent = '❌ ניתן להעלות עד 3 קבצי PDF בכל פעם.';
-          message.className = 'error';
-          return;
-        }
+      // עד 3 קבצים
+      if (files.length > 3) {
+        setMessage('❌ ניתן להעלות עד 3 קבצי PDF בכל פעם.', 'error');
+        submitBtn.disabled = false;
+        return;
+      }
 
-        // העלאת כל קובץ בנפרד
-        for (const file of files) {
-          const fileData = new FormData();
-          fileData.append('email', email);
-          fileData.append('pdf', file);
-          if (source) fileData.append('source', source);
-          if (course) fileData.append('course_name', course);
-          try {
-            const res = await fetch('/api/upload-course-material', {
-              method: 'POST',
-              body: fileData
-            });
-            const data = await res.json().catch(() => ({}));
-            if (res.ok) {
-              const chunks = data.chunksCount ?? data.chunks_saved ?? data.chunks ?? 0;
-              message.textContent += `\n✔ ${file.name}: ${chunks} קטעים נשמרו.`;
-              message.className = 'success';
-            } else {
-              message.textContent += `\n❌ ${file.name}: שגיאה – ${data.error || data.message || 'קרתה תקלה'}`;
-              message.className = 'error';
-            }
-          } catch (err) {
-            message.textContent += `\n❌ ${file.name}: שגיאה בתקשורת עם השרת.`;
-            message.className = 'error';
+      // העלאה של כל קובץ בנפרד
+      let out = '';
+      let anyError = false;
+
+      for (const file of files) {
+        const fileData = new FormData();
+        fileData.append('email', email);
+        fileData.append('pdf', file);
+        if (source) fileData.append('source', source);
+        if (course) fileData.append('course_name', course);
+
+        try {
+          const res = await fetch(UPLOAD_URL, {
+            method: 'POST',
+            body: fileData
+          });
+
+          const data = await res.json().catch(() => ({}));
+          if (res.ok) {
+            const chunks = data.chunksCount ?? data.chunks_saved ?? data.chunks ?? 0;
+            out += `✔ ${file.name}: ${chunks} קטעים נשמרו.\n`;
+          } else {
+            anyError = true;
+            out += `❌ ${file.name}: שגיאה – ${data.error || data.message || 'קרתה תקלה'}\n`;
           }
+        } catch (err) {
+          anyError = true;
+          out += `❌ ${file.name}: שגיאה בתקשורת עם השרת.\n`;
         }
-      });
+      }
+
+      setMessage(out.trim(), anyError ? 'error' : 'success');
+      submitBtn.disabled = false;
+    });
   </script>
 </body>
 </html>
