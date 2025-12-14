@@ -61,7 +61,8 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    const emailFilter = "shayuk@ariel.ac.il"; // רק קבצים שהועלו על ידך
+    // כתובת המייל לסינון הקבצים שהועלו על ידך
+    const emailFilter = "shayuk@ariel.ac.il";
 
     async function loadData() {
       const status = document.getElementById('status');
@@ -70,25 +71,33 @@
       tbody.innerHTML = '';
 
       try {
-        const snapshot = await db.collection('course_chunks')
-          .where("email", "==", emailFilter)
-          .orderBy("ts", "desc")
-          .limit(100).get();
+        // שאילתת Firestore: אוסף rag_chunks, סינון לפי uploaded_by
+        const querySnapshot = await db.collection('rag_chunks')
+          .where("uploaded_by", "==", emailFilter)
+          .limit(500)
+          .get();
 
         const grouped = {};
-        snapshot.forEach(doc => {
+        querySnapshot.forEach(doc => {
           const data = doc.data();
-          const key = data.course_name + "__" + data.source;
+          const key = `${data.course_name || ''}__${data.source || ''}`;
           if (!grouped[key]) {
             grouped[key] = {
-              course_name: data.course_name,
-              source: data.source,
+              course_name: data.course_name || '',
+              source: data.source || '',
               count: 0,
-              ts: data.ts?.toDate(),
-              total_ms: 0
+              lastUploadedAt: null
             };
           }
           grouped[key].count++;
+          // קביעת תאריך ההעלאה האחרון (מבוסס על uploaded_at)
+          const uploadedAt = data.uploaded_at || (data.metadata && data.metadata.uploaded_at);
+          if (uploadedAt) {
+            const date = new Date(uploadedAt);
+            if (!grouped[key].lastUploadedAt || date > grouped[key].lastUploadedAt) {
+              grouped[key].lastUploadedAt = date;
+            }
+          }
         });
 
         Object.values(grouped).forEach(row => {
@@ -98,7 +107,7 @@
             <td>${row.course_name}</td>
             <td>${row.count}</td>
             <td>~${Math.round(row.count * 0.8)}</td>
-            <td>${row.ts?.toLocaleString() || '—'}</td>
+            <td>${row.lastUploadedAt ? row.lastUploadedAt.toLocaleString() : '—'}</td>
           `;
           tbody.appendChild(tr);
         });
@@ -112,6 +121,7 @@
     }
 
     loadData();
+    // ריענון אוטומטי כל 5 שניות
     setInterval(loadData, 5000);
   </script>
 </body>
