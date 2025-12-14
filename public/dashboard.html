@@ -2,9 +2,12 @@
 <html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <title>לוח ניהול העלאות PDF</title>
+  <title>לוח ניהול – קבצים שהועלו</title>
+
+  <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
   <style>
     body {
       font-family: sans-serif;
@@ -12,117 +15,161 @@
       padding: 20px;
       direction: rtl;
     }
+
     h1 {
       color: #2563eb;
+      margin-bottom: 10px;
     }
+
     table {
       width: 100%;
       border-collapse: collapse;
       margin-top: 20px;
+      background: white;
     }
+
     th, td {
       border: 1px solid #ccc;
       padding: 8px 12px;
       text-align: center;
     }
+
     th {
       background: #e0e7ff;
     }
+
+    .loading {
+      color: #555;
+      margin-top: 10px;
+    }
+
     .error {
       color: red;
-    }
-    .loading {
-      color: #999;
+      margin-top: 10px;
     }
   </style>
 </head>
 <body>
-  <h1>📊 לוח ניהול - קבצים שהועלו</h1>
-  <div id="status" class="loading">טוען נתונים...</div>
+
+  <h1>📊 לוח ניהול – קבצים שהועלו</h1>
+  <div id="status" class="loading">טוען נתונים…</div>
+
   <table id="results" style="display:none">
     <thead>
       <tr>
         <th>📄 מקור</th>
         <th>📚 קורס</th>
-        <th>🔢 כמות קטעים</th>
+        <th>🔢 מספר קטעים</th>
         <th>⏱ זמן עיבוד (שניות)</th>
-        <th>📅 תאריך</th>
+        <th>📅 העלאה אחרונה</th>
       </tr>
     </thead>
     <tbody></tbody>
   </table>
 
   <script>
+    /*********************************************************
+     * 1. הגדרות Firebase – חובה למלא מפתחות אמיתיים
+     *********************************************************/
     const firebaseConfig = {
-      apiKey: "YOUR_KEY",
-      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      apiKey: "YOUR_FIREBASE_KEY",
       projectId: "lecturers-gpt-auth"
     };
+
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // כתובת המייל לסינון הקבצים שהועלו על ידך
-    const emailFilter = "shayuk@ariel.ac.il";
+    /*********************************************************
+     * 2. פילטר – רק הקבצים שלך
+     *********************************************************/
+    const EMAIL_FILTER = "shayuk@ariel.ac.il";
 
+    /*********************************************************
+     * 3. טעינת נתונים מ־rag_chunks
+     *********************************************************/
     async function loadData() {
       const status = document.getElementById('status');
       const table = document.getElementById('results');
       const tbody = table.querySelector('tbody');
-      tbody.innerHTML = '';
+
+      status.textContent = "טוען נתונים…";
+      status.className = "loading";
+      table.style.display = "none";
+      tbody.innerHTML = "";
 
       try {
-        // שאילתת Firestore: אוסף rag_chunks, סינון לפי uploaded_by
-        const querySnapshot = await db.collection('rag_chunks')
-          .where("uploaded_by", "==", emailFilter)
+        const snapshot = await db
+          .collection("rag_chunks")
+          .where("uploaded_by", "==", EMAIL_FILTER)
           .limit(500)
           .get();
 
+        if (snapshot.empty) {
+          status.textContent = "לא נמצאו קבצים שהועלו.";
+          return;
+        }
+
+        // קיבוץ לפי מקור + קורס
         const grouped = {};
-        querySnapshot.forEach(doc => {
+
+        snapshot.forEach(doc => {
           const data = doc.data();
           const key = `${data.course_name || ''}__${data.source || ''}`;
+
           if (!grouped[key]) {
             grouped[key] = {
-              course_name: data.course_name || '',
-              source: data.source || '',
+              source: data.source || "—",
+              course_name: data.course_name || "—",
               count: 0,
               lastUploadedAt: null
             };
           }
+
           grouped[key].count++;
-          // קביעת תאריך ההעלאה האחרון (מבוסס על uploaded_at)
-          const uploadedAt = data.uploaded_at || (data.metadata && data.metadata.uploaded_at);
+
+          const uploadedAt =
+            data.uploaded_at ||
+            (data.metadata && data.metadata.uploaded_at);
+
           if (uploadedAt) {
             const date = new Date(uploadedAt);
-            if (!grouped[key].lastUploadedAt || date > grouped[key].lastUploadedAt) {
+            if (
+              !grouped[key].lastUploadedAt ||
+              date > grouped[key].lastUploadedAt
+            ) {
               grouped[key].lastUploadedAt = date;
             }
           }
         });
 
         Object.values(grouped).forEach(row => {
-          const tr = document.createElement('tr');
+          const tr = document.createElement("tr");
           tr.innerHTML = `
             <td>${row.source}</td>
             <td>${row.course_name}</td>
             <td>${row.count}</td>
             <td>~${Math.round(row.count * 0.8)}</td>
-            <td>${row.lastUploadedAt ? row.lastUploadedAt.toLocaleString() : '—'}</td>
+            <td>${row.lastUploadedAt ? row.lastUploadedAt.toLocaleString() : "—"}</td>
           `;
           tbody.appendChild(tr);
         });
 
-        table.style.display = 'table';
-        status.style.display = 'none';
+        status.textContent = "";
+        table.style.display = "table";
+
       } catch (err) {
-        status.textContent = "שגיאה בטעינת הנתונים.";
         console.error(err);
+        status.textContent = "❌ שגיאה בטעינת הנתונים (בדקי הרשאות Firestore)";
+        status.className = "error";
       }
     }
 
+    /*********************************************************
+     * 4. טעינה ראשונית + ריענון
+     *********************************************************/
     loadData();
-    // ריענון אוטומטי כל 5 שניות
     setInterval(loadData, 5000);
   </script>
+
 </body>
 </html>
