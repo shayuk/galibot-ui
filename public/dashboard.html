@@ -1,11 +1,12 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>לוח ניהול – קבצים שהועלו</title>
 
-  <!-- Firebase SDKs -->
+  <!-- Firebase SDKs (Compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 
   <style>
@@ -15,44 +16,88 @@
       padding: 20px;
       direction: rtl;
     }
-
     h1 {
       color: #2563eb;
-      margin-bottom: 10px;
+      margin: 0 0 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
-      background: white;
+    .sub {
+      color: #64748b;
+      margin-bottom: 14px;
+      font-size: 0.95rem;
     }
-
-    th, td {
-      border: 1px solid #ccc;
-      padding: 8px 12px;
-      text-align: center;
-    }
-
-    th {
-      background: #e0e7ff;
-    }
-
     .loading {
       color: #555;
       margin-top: 10px;
     }
-
     .error {
-      color: red;
+      color: #b91c1c;
+      margin-top: 10px;
+      font-weight: 600;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 18px;
+      background: white;
+    }
+    th, td {
+      border: 1px solid #d1d5db;
+      padding: 10px 12px;
+      text-align: center;
+    }
+    th {
+      background: #e0e7ff;
+      font-weight: 700;
+    }
+    .pill {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #1e3a8a;
+      font-size: 0.85rem;
+    }
+    .topbar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
       margin-top: 10px;
     }
+    input[type="text"]{
+      padding: 8px 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      min-width: 220px;
+    }
+    button {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button:disabled { opacity: .6; cursor: not-allowed; }
   </style>
 </head>
-<body>
 
-  <h1>📊 לוח ניהול – קבצים שהועלו</h1>
-  <div id="status" class="loading">טוען נתונים…</div>
+<body>
+  <h1>📊 לוח ניהול – קבצים שהועלו <span class="pill">Firestore / rag_chunks</span></h1>
+  <div class="sub">אם את רואה “Missing permissions” – זה אומר שאין התחברות או שה-Rules לא פורסמו.</div>
+
+  <div class="topbar">
+    <label>
+      סינון לפי מקור/קורס:
+      <input id="search" type="text" placeholder="למשל: שיעור 1 או statistics" />
+    </label>
+    <button id="refreshBtn">רענון</button>
+  </div>
+
+  <div id="status" class="loading">מתחבר ל-Firebase…</div>
 
   <table id="results" style="display:none">
     <thead>
@@ -60,7 +105,6 @@
         <th>📄 מקור</th>
         <th>📚 קורס</th>
         <th>🔢 מספר קטעים</th>
-        <th>⏱ זמן עיבוד (שניות)</th>
         <th>📅 העלאה אחרונה</th>
       </tr>
     </thead>
@@ -69,57 +113,92 @@
 
   <script>
     /*********************************************************
-     * 1. הגדרות Firebase – חובה למלא מפתחות אמיתיים
+     * 1) Firebase Config – זה מפתח של Firebase (Web API Key)
+     *    לא להדביק כאן OpenAI key בשום מצב.
      *********************************************************/
     const firebaseConfig = {
-      apiKey: "YOUR_FIREBASE_KEY",
+      apiKey: "YOUR_FIREBASE_WEB_API_KEY",
+      authDomain: "lecturers-gpt-auth.firebaseapp.com",
       projectId: "lecturers-gpt-auth"
     };
 
     firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
     const db = firebase.firestore();
 
-    /*********************************************************
-     * 2. פילטר – רק הקבצים שלך
-     *********************************************************/
-    const EMAIL_FILTER = "krimishay68@gmail.com";
+    const statusEl = document.getElementById('status');
+    const tableEl = document.getElementById('results');
+    const tbodyEl = tableEl.querySelector('tbody');
+    const searchEl = document.getElementById('search');
+    const refreshBtn = document.getElementById('refreshBtn');
 
-    /*********************************************************
-     * 3. טעינת נתונים מ־rag_chunks
-     *********************************************************/
+    let groupedRows = [];
+
+    function setStatus(text, type) {
+      statusEl.textContent = text;
+      statusEl.className = type || "loading";
+    }
+
+    function renderTable(filterText = "") {
+      tbodyEl.innerHTML = "";
+
+      const q = (filterText || "").trim().toLowerCase();
+      const rows = q
+        ? groupedRows.filter(r =>
+            (r.source || "").toLowerCase().includes(q) ||
+            (r.course_name || "").toLowerCase().includes(q)
+          )
+        : groupedRows;
+
+      if (rows.length === 0) {
+        tableEl.style.display = "none";
+        setStatus("לא נמצאו נתונים להצגה (אולי הסינון מחמיר מדי).", "loading");
+        return;
+      }
+
+      for (const row of rows) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${row.source || "—"}</td>
+          <td>${row.course_name || "—"}</td>
+          <td>${row.count || 0}</td>
+          <td>${row.lastUploadedAt ? row.lastUploadedAt.toLocaleString() : "—"}</td>
+        `;
+        tbodyEl.appendChild(tr);
+      }
+
+      setStatus("");
+      tableEl.style.display = "table";
+    }
+
     async function loadData() {
-      const status = document.getElementById('status');
-      const table = document.getElementById('results');
-      const tbody = table.querySelector('tbody');
-
-      status.textContent = "טוען נתונים…";
-      status.className = "loading";
-      table.style.display = "none";
-      tbody.innerHTML = "";
+      refreshBtn.disabled = true;
+      tableEl.style.display = "none";
+      tbodyEl.innerHTML = "";
+      setStatus("טוען נתונים…", "loading");
 
       try {
-        const snapshot = await db
-          .collection("rag_chunks")
-          .where("uploaded_by", "==", EMAIL_FILTER)
-          .limit(500)
-          .get();
+        // קריאה מ-rag_chunks. ה-Rules צריכים לאפשר read אחרי auth.
+        const snapshot = await db.collection("rag_chunks").limit(500).get();
 
         if (snapshot.empty) {
-          status.textContent = "לא נמצאו קבצים שהועלו.";
+          groupedRows = [];
+          renderTable(searchEl.value);
+          setStatus("לא נמצאו נתונים ב-rag_chunks.", "loading");
+          refreshBtn.disabled = false;
           return;
         }
 
-        // קיבוץ לפי מקור + קורס
         const grouped = {};
 
         snapshot.forEach(doc => {
-          const data = doc.data();
-          const key = `${data.course_name || ''}__${data.source || ''}`;
+          const d = doc.data();
+          const key = `${d.course_name || ""}__${d.source || ""}`;
 
           if (!grouped[key]) {
             grouped[key] = {
-              source: data.source || "—",
-              course_name: data.course_name || "—",
+              source: d.source || "—",
+              course_name: d.course_name || "—",
               count: 0,
               lastUploadedAt: null
             };
@@ -127,49 +206,46 @@
 
           grouped[key].count++;
 
-          const uploadedAt =
-            data.uploaded_at ||
-            (data.metadata && data.metadata.uploaded_at);
-
+          const uploadedAt = d.uploaded_at || (d.metadata && d.metadata.uploaded_at);
           if (uploadedAt) {
             const date = new Date(uploadedAt);
-            if (
-              !grouped[key].lastUploadedAt ||
-              date > grouped[key].lastUploadedAt
-            ) {
+            if (!grouped[key].lastUploadedAt || date > grouped[key].lastUploadedAt) {
               grouped[key].lastUploadedAt = date;
             }
           }
         });
 
-        Object.values(grouped).forEach(row => {
-          const tr = document.createElement("tr");
-          tr.innerHTML = `
-            <td>${row.source}</td>
-            <td>${row.course_name}</td>
-            <td>${row.count}</td>
-            <td>~${Math.round(row.count * 0.8)}</td>
-            <td>${row.lastUploadedAt ? row.lastUploadedAt.toLocaleString() : "—"}</td>
-          `;
-          tbody.appendChild(tr);
-        });
+        groupedRows = Object.values(grouped)
+          .sort((a, b) => {
+            const ta = a.lastUploadedAt ? a.lastUploadedAt.getTime() : 0;
+            const tb = b.lastUploadedAt ? b.lastUploadedAt.getTime() : 0;
+            return tb - ta;
+          });
 
-        status.textContent = "";
-        table.style.display = "table";
-
+        renderTable(searchEl.value);
+        refreshBtn.disabled = false;
       } catch (err) {
         console.error(err);
-        status.textContent = "❌ שגיאה בטעינת הנתונים (בדקי הרשאות Firestore)";
-        status.className = "error";
+        setStatus("❌ שגיאה בטעינת הנתונים (בדקי Firestore Rules + Publish + Anonymous Enabled).", "error");
+        refreshBtn.disabled = false;
       }
     }
 
-    /*********************************************************
-     * 4. טעינה ראשונית + ריענון
-     *********************************************************/
-    loadData();
-    setInterval(loadData, 5000);
-  </script>
+    // 2) התחברות אנונימית (חייב להיות Enabled ב-Authentication)
+    auth.signInAnonymously()
+      .then(() => {
+        console.log("Signed in anonymously");
+        loadData();
+        setInterval(loadData, 5000);
+      })
+      .catch((err) => {
+        console.error("Auth error:", err);
+        setStatus("❌ שגיאת התחברות ל-Firebase (בדקי שהפעלת Anonymous ב-Authentication).", "error");
+      });
 
+    // UI events
+    searchEl.addEventListener("input", () => renderTable(searchEl.value));
+    refreshBtn.addEventListener("click", loadData);
+  </script>
 </body>
 </html>
