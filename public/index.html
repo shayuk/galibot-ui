@@ -996,8 +996,7 @@
       const messagesDiv = document.getElementById('chatMessages');
       const messageDiv = document.createElement('div');
       messageDiv.className = `message ${type}-message`;
-      // שימוש ב-innerHTML כדי לאפשר MathJax לעבוד
-      messageDiv.innerHTML = text.replace(/\n/g, '<br>');
+      messageDiv.textContent = text;
       messagesDiv.appendChild(messageDiv);
       messageDiv.scrollIntoView({ behavior: 'smooth' });
 
@@ -1006,8 +1005,7 @@
 
     function updateBotMessage(text) {
       if (currentBotMessage) {
-        // עדכון הטקסט עם HTML כדי לאפשר MathJax לעבוד
-        currentBotMessage.innerHTML = text.replace(/\n/g, '<br>');
+        currentBotMessage.textContent = text;
         currentBotMessage.scrollIntoView({ behavior: 'smooth' });
       }
     }
