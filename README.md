@@ -36,7 +36,7 @@ const API_URL = "https://lecturers-gpt-server.onrender.com/api/ask/stream";
 ```
 galibot-ui/
 ├── public/
-│   ├── index.html      # Main chat interface
+│   ├── index.html      # Main chat interface (canonical entry)
 │   ├── dashboard.html  # Dashboard (if exists)
 │   └── upload.html     # Upload interface (if exists)
 ├── firebase.json       # Firebase Hosting configuration
