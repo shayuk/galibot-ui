@@ -37,6 +37,8 @@
       --codeBorder: #e1e6eb;
 
       --focus: rgba(0, 123, 255, 0.35);
+      --attachBtnSize: 44px;
+      --thumbSize: 48px;
     }
 
     html[data-theme="dark"] {
@@ -375,7 +377,7 @@
 
     .input-container {
       display: grid;
-      grid-template-columns: 220px 1fr 120px;
+      grid-template-columns: 220px 1fr var(--attachBtnSize) 120px;
       gap: 10px;
       align-items: center;
     }
@@ -416,6 +418,48 @@
       transform: none;
     }
 
+    #attachButton {
+      width: var(--attachBtnSize);
+      height: var(--attachBtnSize);
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+
+    .image-preview {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--panel);
+      margin-top: 8px;
+    }
+
+    .image-preview.active { display: flex; }
+
+    .image-preview img {
+      width: var(--thumbSize);
+      height: var(--thumbSize);
+      object-fit: cover;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+
+    .image-preview-meta {
+      font-size: 12px;
+      color: var(--muted);
+      flex: 1;
+    }
+
+    .remove-image-btn {
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+
     /* Responsive (Mobile) */
     @media (max-width: 980px) {
       .app-shell {
@@ -441,6 +485,13 @@
 
       .input-container {
         grid-template-columns: 1fr;
+      }
+
+      #attachButton {
+        width: 100%;
+        height: auto;
+        padding: 12px 14px;
+        justify-content: center;
       }
 
       #sendButton { width: 100%; }
@@ -551,7 +602,15 @@
         <div class="input-container">
           <input type="email" id="emailInput" placeholder="הכנס/י כתובת מייל" value="test@ariel.ac.il" />
           <input type="text" id="messageInput" placeholder="כתבו שאלה כאן..." onkeypress="handleKeyPress(event)" />
+          <button class="icon-btn" id="attachButton" type="button" aria-label="צרף תמונה" title="צרף תמונה">📎</button>
           <button id="sendButton" type="button" onclick="sendMessage()">שלח</button>
+          <input type="file" id="imageInput" accept="image/png,image/jpeg,image/webp" hidden />
+        </div>
+
+        <div class="image-preview" id="imagePreview" aria-live="polite">
+          <img id="imagePreviewImg" alt="תצוגה מקדימה של תמונה מצורפת" />
+          <div class="image-preview-meta" id="imagePreviewMeta"></div>
+          <button class="icon-btn remove-image-btn" id="removeImageButton" type="button" aria-label="הסר תמונה" title="הסר תמונה">✕</button>
         </div>
 
         <div class="legal-banner" dir="rtl" lang="he">
@@ -565,7 +624,17 @@
     // =========================
     // Config
     // =========================
-    const API_URL = 'https://lecturers-gpt-server.onrender.com/api/ask/stream';
+    const API_BASE_URL = 'https://lecturers-gpt-server.onrender.com';
+    const API_URL = `${API_BASE_URL}/api/ask/stream`;
+    const UPLOAD_URL = `${API_BASE_URL}/api/upload-image`;
+    const BYTES_PER_KB = 1024;
+    const KB_PER_MB = 1024;
+    const MAX_IMAGE_BYTES = 10 * BYTES_PER_KB * KB_PER_MB;
+    const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+    const HISTORY_MAX_TURNS = 12;
+    const HISTORY_MAX_TOTAL_CHARS = 12000;
+    const HISTORY_MAX_MESSAGE_CHARS = 4000;
+    const HISTORY_MAX_BUFFER_TURNS = 60;
     // או להשתמש ב: const API_URL = 'https://lecturers-gpt-server.onrender.com/api/ask?stream=true';
 
     // =========================
@@ -892,11 +961,150 @@
     // Chat (Streaming)
     // =========================
     let currentBotMessage = null;
+    let attachedImageFile = null;
+    let attachedImageObjectUrl = null;
+    const chatHistory = [];
 
     function handleKeyPress(event) {
       if (event.key === 'Enter') {
         sendMessage();
       }
+    }
+
+    function formatBytes(bytes) {
+      if (bytes < BYTES_PER_KB) return `${bytes} B`;
+      if (bytes < BYTES_PER_KB * KB_PER_MB) return `${(bytes / BYTES_PER_KB).toFixed(1)} KB`;
+      return `${(bytes / (BYTES_PER_KB * KB_PER_MB)).toFixed(1)} MB`;
+    }
+
+    function validateImageFile(file) {
+      if (!file) {
+        return { ok: false, message: 'לא נבחרה תמונה.' };
+      }
+      if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+        return { ok: false, message: 'סוג הקובץ אינו נתמך. יש לבחור PNG / JPEG / WEBP.' };
+      }
+      if (file.size > MAX_IMAGE_BYTES) {
+        return { ok: false, message: 'התמונה גדולה מדי. נסו תמונה עד 10MB.' };
+      }
+      return { ok: true };
+    }
+
+    function truncateText(text, maxChars) {
+      if (!text || typeof text !== 'string') return '';
+      if (text.length <= maxChars) return text;
+      return text.slice(0, maxChars);
+    }
+
+    function normalizeHistoryContent(text) {
+      return truncateText(String(text || '').trim(), HISTORY_MAX_MESSAGE_CHARS);
+    }
+
+    function pushToHistory(role, content) {
+      const normalized = normalizeHistoryContent(content);
+      if (!normalized) return;
+      chatHistory.push({ role, content: normalized });
+      if (chatHistory.length > HISTORY_MAX_BUFFER_TURNS) {
+        chatHistory.splice(0, chatHistory.length - HISTORY_MAX_BUFFER_TURNS);
+      }
+    }
+
+    function getBoundedHistory(history, maxTurns, maxTotalChars) {
+      const recent = history.slice(-maxTurns);
+      let remaining = maxTotalChars;
+      const bounded = [];
+
+      for (let i = recent.length - 1; i >= 0; i -= 1) {
+        const item = recent[i];
+        let content = normalizeHistoryContent(item.content);
+        if (!content) continue;
+        if (content.length > remaining) {
+          content = content.slice(0, remaining);
+        }
+        if (!content) continue;
+        remaining -= content.length;
+        bounded.push({ role: item.role, content });
+        if (remaining <= 0) break;
+      }
+
+      return bounded.reverse();
+    }
+
+    function updateImagePreview() {
+      const preview = document.getElementById('imagePreview');
+      const previewImg = document.getElementById('imagePreviewImg');
+      const previewMeta = document.getElementById('imagePreviewMeta');
+
+      if (!attachedImageFile) {
+        preview.classList.remove('active');
+        previewImg.removeAttribute('src');
+        previewMeta.textContent = '';
+        return;
+      }
+
+      preview.classList.add('active');
+      previewImg.src = attachedImageObjectUrl;
+      previewMeta.textContent = `${attachedImageFile.name} • ${formatBytes(attachedImageFile.size)}`;
+    }
+
+    function setAttachedImage(file) {
+      const validation = validateImageFile(file);
+      if (!validation.ok) {
+        alert(validation.message);
+        return false;
+      }
+
+      if (attachedImageObjectUrl) {
+        URL.revokeObjectURL(attachedImageObjectUrl);
+      }
+      attachedImageFile = file;
+      attachedImageObjectUrl = URL.createObjectURL(file);
+      updateImagePreview();
+      return true;
+    }
+
+    function clearImageAttachment() {
+      const imageInput = document.getElementById('imageInput');
+      if (attachedImageObjectUrl) {
+        URL.revokeObjectURL(attachedImageObjectUrl);
+      }
+      attachedImageFile = null;
+      attachedImageObjectUrl = null;
+      imageInput.value = '';
+      updateImagePreview();
+    }
+
+    function clearAttachedImage() {
+      clearImageAttachment();
+    }
+
+    async function uploadImage(email, file) {
+      const formData = new FormData();
+      formData.append('email', email);
+      formData.append('image', file);
+
+      const response = await fetch(UPLOAD_URL, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const responseText = await response.text();
+        let errorMessage = `שגיאה בהעלאת תמונה (${response.status})`;
+        try {
+          const payload = JSON.parse(responseText);
+          errorMessage = payload.message || payload.error || errorMessage;
+        } catch (e) {
+          if (responseText) errorMessage = responseText;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const payload = await response.json();
+      if (!payload || !payload.image_id) {
+        throw new Error('תשובת העלאה לא תקינה.');
+      }
+      return payload;
     }
 
     async function sendMessage() {
@@ -912,6 +1120,7 @@
 
       // הוספת הודעת המשתמש
       addMessage('user', prompt);
+      pushToHistory('user', prompt);
       document.getElementById('messageInput').value = '';
       sendButton.disabled = true;
 
@@ -920,6 +1129,7 @@
 
       // יצירת הודעת בוט ריקה
       currentBotMessage = addMessage('bot', '');
+      let assistantHistoryRecorded = false;
 
       const cleanupUI = () => {
         status.classList.remove('streaming');
@@ -945,10 +1155,22 @@
       maxTimeoutId = window.setTimeout(() => controller.abort(), MAX_MS);
 
       try {
+        let imageId = null;
+        if (attachedImageFile) {
+          status.textContent = 'מעלה תמונה...';
+          const uploadResult = await uploadImage(email, attachedImageFile);
+          imageId = uploadResult.image_id;
+        }
+
+        status.textContent = 'ממתין לתשובה...';
+
+        const payload = { email, prompt, history: getBoundedHistory(chatHistory, HISTORY_MAX_TURNS, HISTORY_MAX_TOTAL_CHARS) };
+        if (imageId) payload.image_id = imageId;
+
         const response = await fetch(API_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, prompt }),
+          body: JSON.stringify(payload),
           signal: controller.signal
         });
 
@@ -962,6 +1184,12 @@
         let fullAnswer = '';
         let sources = null;
         let stopReading = false;
+        const finalizeAssistantHistory = () => {
+          if (assistantHistoryRecorded) return;
+          const finalText = currentBotMessage?.textContent || fullAnswer;
+          pushToHistory('assistant', finalText);
+          assistantHistoryRecorded = true;
+        };
 
         while (true) {
           const { done, value } = await reader.read();
@@ -1003,6 +1231,7 @@
                     }
                   }
                   stopReading = true;
+                  finalizeAssistantHistory();
                   break;
                 } else if (data.type === 'error') {
                   throw new Error(data.message);
@@ -1017,6 +1246,10 @@
 
           if (stopReading) break;
         }
+
+        if (!assistantHistoryRecorded) {
+          finalizeAssistantHistory();
+        }
       } catch (error) {
         console.error('Error:', error);
         if (error?.name === 'AbortError') {
@@ -1028,6 +1261,12 @@
         window.clearTimeout(idleTimeoutId);
         window.clearTimeout(maxTimeoutId);
         cleanupUI();
+        if (currentBotMessage && !assistantHistoryRecorded) {
+          pushToHistory('assistant', currentBotMessage.textContent || '');
+        }
+        if (attachedImageFile) {
+          clearImageAttachment();
+        }
         if (window.MathJax?.typesetPromise) {
           const messagesDiv = document.getElementById('chatMessages');
           window.MathJax.typesetPromise([messagesDiv]).catch(err => {
@@ -1078,6 +1317,32 @@
       openBtn.addEventListener('click', () => setSidebarOpen(true));
       closeBtn.addEventListener('click', () => setSidebarOpen(false));
       scrim.addEventListener('click', () => setSidebarOpen(false));
+
+      const attachButton = document.getElementById('attachButton');
+      const imageInput = document.getElementById('imageInput');
+      const removeImageButton = document.getElementById('removeImageButton');
+      const messageInput = document.getElementById('messageInput');
+
+      attachButton.addEventListener('click', () => imageInput.click());
+      imageInput.addEventListener('change', (event) => {
+        const file = event.target.files && event.target.files[0];
+        if (file) setAttachedImage(file);
+      });
+
+      removeImageButton.addEventListener('click', () => clearImageAttachment());
+
+      messageInput.addEventListener('paste', (event) => {
+        const items = event.clipboardData?.items || [];
+        for (const item of items) {
+          if (item.kind === 'file' && item.type.startsWith('image/')) {
+            const file = item.getAsFile();
+            if (file && setAttachedImage(file)) {
+              event.preventDefault();
+              return;
+            }
+          }
+        }
+      });
 
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') setSidebarOpen(false);
