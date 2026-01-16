@@ -908,7 +908,22 @@
       };
 
       const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), 60000);
+      const IDLE_MS = 30000;
+      const MAX_MS = 180000;
+      let idleTimeoutId = null;
+      let maxTimeoutId = null;
+
+      const startIdleTimer = () => {
+        idleTimeoutId = window.setTimeout(() => controller.abort(), IDLE_MS);
+      };
+
+      const resetIdleTimer = () => {
+        window.clearTimeout(idleTimeoutId);
+        startIdleTimer();
+      };
+
+      startIdleTimer();
+      maxTimeoutId = window.setTimeout(() => controller.abort(), MAX_MS);
 
       try {
         const response = await fetch(API_URL, {
@@ -933,6 +948,7 @@
           const { done, value } = await reader.read();
           if (done) break;
 
+          resetIdleTimer();
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split('\n');
           buffer = lines.pop();
@@ -990,7 +1006,8 @@
           updateBotMessage('שגיאה: ' + error.message);
         }
       } finally {
-        window.clearTimeout(timeoutId);
+        window.clearTimeout(idleTimeoutId);
+        window.clearTimeout(maxTimeoutId);
         cleanupUI();
         if (window.MathJax?.typesetPromise) {
           const messagesDiv = document.getElementById('chatMessages');
