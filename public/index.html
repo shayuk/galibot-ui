@@ -983,6 +983,12 @@
         updateBotMessage('שגיאה: ' + error.message);
       } finally {
         cleanupUI();
+        if (window.MathJax?.typesetPromise) {
+          const messagesDiv = document.getElementById('chatMessages');
+          window.MathJax.typesetPromise([messagesDiv]).catch(err => {
+            console.log('MathJax typeset error:', err);
+          });
+        }
       }
     }
 
@@ -994,14 +1000,7 @@
       messageDiv.innerHTML = text.replace(/\n/g, '<br>');
       messagesDiv.appendChild(messageDiv);
       messageDiv.scrollIntoView({ behavior: 'smooth' });
-      
-      // עדכון MathJax אחרי הוספת הודעה חדשה
-      if (window.MathJax && window.MathJax.typesetPromise) {
-        window.MathJax.typesetPromise([messageDiv]).catch(err => {
-          console.log('MathJax typeset error:', err);
-        });
-      }
-      
+
       return messageDiv;
     }
 
@@ -1010,13 +1009,6 @@
         // עדכון הטקסט עם HTML כדי לאפשר MathJax לעבוד
         currentBotMessage.innerHTML = text.replace(/\n/g, '<br>');
         currentBotMessage.scrollIntoView({ behavior: 'smooth' });
-        
-        // עדכון MathJax אחרי שינוי התוכן
-        if (window.MathJax && window.MathJax.typesetPromise) {
-          window.MathJax.typesetPromise([currentBotMessage]).catch(err => {
-            console.log('MathJax typeset error:', err);
-          });
-        }
       }
     }
 
