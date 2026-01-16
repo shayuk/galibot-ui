@@ -907,11 +907,15 @@
         sendButton.disabled = false;
       };
 
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 60000);
+
       try {
         const response = await fetch(API_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, prompt })
+          body: JSON.stringify({ email, prompt }),
+          signal: controller.signal
         });
 
         if (!response.ok) {
@@ -980,8 +984,13 @@
         }
       } catch (error) {
         console.error('Error:', error);
-        updateBotMessage('שגיאה: ' + error.message);
+        if (error?.name === 'AbortError') {
+          updateBotMessage('החיבור התעכב/נותק. נסי שוב.');
+        } else {
+          updateBotMessage('שגיאה: ' + error.message);
+        }
       } finally {
+        window.clearTimeout(timeoutId);
         cleanupUI();
         if (window.MathJax?.typesetPromise) {
           const messagesDiv = document.getElementById('chatMessages');
